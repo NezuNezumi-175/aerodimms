@@ -2,6 +2,15 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Supabase Auth
+
+Set the Supabase project URL and anon key in `.env.local` (see `.env.example`). Create the users who should be able to sign in under **Authentication → Users** in the Supabase dashboard. The login page accepts their email address and password; protected app routes require a valid Supabase session.
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
 First, run the development server:
 
 ```bash
@@ -34,3 +43,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## demo login account
+Email: demo.user@example.com
+Password: DemoUser_2026!Map42

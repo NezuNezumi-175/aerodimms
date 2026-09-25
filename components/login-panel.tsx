@@ -2,45 +2,39 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { profiles, setStoredUser } from "@/lib/demo-data";
+import { createClient } from "@/lib/supabase/client";
 
 export function LoginPanel() {
   const router = useRouter();
-  const [employeeId, setEmployeeId] = useState("PEN12345");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = (event: React.FormEvent) => {
+  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setError("");
+    setIsSubmitting(true);
 
-    const user = profiles.find(
-      (profile) => profile.employeeId.toLowerCase() === employeeId.trim().toLowerCase(),
-    );
+    try {
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    if (!user || password.trim() === "") {
-      setError("Invalid credentials. Please check your Employee ID and password.");
-      return;
-    }
+      if (signInError) {
+        setError("ログインできませんでした。メールアドレスとパスワードを確認してください。");
+        return;
+      }
 
-    if (employeeId.trim().toLowerCase() === "pen12345" && password.trim() === "password123") {
-      setStoredUser(user);
       router.replace("/dashboard");
-      return;
+      router.refresh();
+    } catch {
+      setError("Supabase の接続設定を確認してください。");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    if (employeeId.trim().toLowerCase() === "pen23456" && password.trim() === "password123") {
-      setStoredUser(user);
-      router.replace("/dashboard");
-      return;
-    }
-
-    if (employeeId.trim().toLowerCase() === "pen34567" && password.trim() === "password123") {
-      setStoredUser(user);
-      router.replace("/dashboard");
-      return;
-    }
-
-    setError("Invalid credentials. Please check your Employee ID and password.");
   };
 
   return (
@@ -54,49 +48,51 @@ export function LoginPanel() {
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <label htmlFor="employeeId" className="mb-1 block text-sm font-medium text-slate-700">
-              Employee ID
+            <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
+              メールアドレス
             </label>
             <input
-              id="employeeId"
-              value={employeeId}
-              onChange={(event) => setEmployeeId(event.target.value)}
+              id="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none ring-0 transition focus:border-sky-400 focus:bg-white"
-              placeholder="PEN12345"
+              placeholder="you@example.com"
             />
           </div>
 
           <div>
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
-              Password
+              パスワード
             </label>
             <input
               id="password"
               type="password"
+              autoComplete="current-password"
+              required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none transition focus:border-sky-400 focus:bg-white"
-              placeholder="********"
+              placeholder="••••••••"
             />
           </div>
 
           {error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
             </div>
           ) : null}
 
           <button
             type="submit"
-            className="w-full rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
+            disabled={isSubmitting}
+            className="w-full rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-wait disabled:opacity-60"
           >
-            LOGIN
+            {isSubmitting ? "ログイン中…" : "ログイン"}
           </button>
         </form>
-
-        <div className="mt-6 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-          Demo accounts: PEN12345, PEN23456, PEN34567 / password123
-        </div>
       </div>
     </div>
   );

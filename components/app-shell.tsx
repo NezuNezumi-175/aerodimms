@@ -3,32 +3,51 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getStoredUser, setStoredUser } from "@/lib/demo-data";
+import type { User } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null);
-
-  useEffect(() => {
-    setCurrentUser(getStoredUser());
-  }, [pathname]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
     if (pathname === "/login" || pathname === "/") return;
-    if (!currentUser) {
+
+    let active = true;
+    let supabase: ReturnType<typeof createClient>;
+
+    try {
+      supabase = createClient();
+    } catch {
       router.replace("/login");
+      return;
     }
-  }, [currentUser, pathname, router]);
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (active) setCurrentUser(user);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active) setCurrentUser(session?.user ?? null);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [pathname, router]);
 
   if (pathname === "/login" || pathname === "/") {
     return <>{children}</>;
   }
 
   const logout = () => {
-    setStoredUser(null);
-    setCurrentUser(null);
-    router.push("/login");
+    createClient().auth.signOut().finally(() => {
+      setCurrentUser(null);
+      router.replace("/login");
+      router.refresh();
+    });
   };
 
   const navItems = [
@@ -83,7 +102,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <p className="text-xs uppercase tracking-[0.22em] text-slate-500">User</p>
-                <p className="text-sm font-semibold text-slate-700">{currentUser?.fullName ?? "N/A"}</p>
+                <p className="text-sm font-semibold text-slate-700">
+                  {currentUser?.user_metadata.full_name ?? currentUser?.email ?? "Loading…"}
+                </p>
               </div>
               <button
                 type="button"
