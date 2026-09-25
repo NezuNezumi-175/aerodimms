@@ -24,14 +24,16 @@ export function LoginPanel() {
       });
 
       if (signInError) {
-        setError("ログインできませんでした。メールアドレスとパスワードを確認してください。");
+        setError(
+          "Unable to log in. Please check your email address and password.",
+        );
         return;
       }
 
       router.replace("/dashboard");
       router.refresh();
     } catch {
-      setError("Supabase の接続設定を確認してください。");
+      setError("Please check your Supabase connection settings.");
     } finally {
       setIsSubmitting(false);
     }
@@ -41,15 +43,24 @@ export function LoginPanel() {
     <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
         <div className="mb-8">
-          <p className="text-xs uppercase tracking-[0.25em] text-sky-600">AeroDIMMS</p>
-          <h1 className="mt-3 text-3xl font-bold text-slate-900">Penang Airport</h1>
-          <p className="mt-2 text-sm text-slate-600">Operations dashboard and issue tracker</p>
+          <p className="text-xs uppercase tracking-[0.25em] text-sky-600">
+            AeroDIMMS
+          </p>
+          <h1 className="mt-3 text-3xl font-bold text-slate-900">
+            Penang Airport
+          </h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Operations dashboard and issue tracker
+          </p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-              メールアドレス
+            <label
+              htmlFor="email"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Email Address
             </label>
             <input
               id="email"
@@ -64,8 +75,11 @@ export function LoginPanel() {
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
-              パスワード
+            <label
+              htmlFor="password"
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              Password
             </label>
             <input
               id="password"
@@ -80,7 +94,10 @@ export function LoginPanel() {
           </div>
 
           {error ? (
-            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            >
               {error}
             </div>
           ) : null}
@@ -90,9 +107,19 @@ export function LoginPanel() {
             disabled={isSubmitting}
             className="w-full rounded-xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-wait disabled:opacity-60"
           >
-            {isSubmitting ? "ログイン中…" : "ログイン"}
+            {isSubmitting ? "Signing in…" : "Sign In"}
           </button>
         </form>
+
+        <div className="mt-6 rounded-lg border border-slate-100 bg-slate-50/50 px-4 py-3 text-xs text-slate-400">
+          <p className="font-medium text-slate-400">Demo Account</p>
+          <p className="mt-1">
+            Email: demo.user@example.com
+          </p>
+          <p>
+            Password: DemoUser_2026!Map42
+          </p>
+        </div>
       </div>
     </div>
   );
