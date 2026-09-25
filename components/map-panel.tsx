@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { FeatureCollection, Point } from "geojson";
 import Link from "next/link";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -25,7 +26,7 @@ export function MapPanel() {
   const [showAssets, setShowAssets] = useState(true);
   const [showFindings, setShowFindings] = useState(true);
   const [showAirport, setShowAirport] = useState(true);
-  const [airportData, setAirportData] = useState<maplibregl.GeoJSONSourceSpecification["data"] | null>(null);
+  const [airportData, setAirportData] = useState<FeatureCollection<Point, { name?: string; type?: string; apron?: string }> | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
 
@@ -38,7 +39,7 @@ export function MapPanel() {
     fetch("/fukuoka-airport.geojson")
       .then((response) => {
         if (!response.ok) throw new Error("Failed to load Fukuoka Airport data.");
-        return response.json() as Promise<maplibregl.GeoJSONSourceSpecification["data"]>;
+        return response.json() as Promise<FeatureCollection<Point, { name?: string; type?: string; apron?: string }>>;
       })
       .then((data) => {
         if (!cancelled) setAirportData(data);
@@ -92,37 +93,20 @@ export function MapPanel() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !airportData) return;
+    if (!map || !airportData || !showAirport) return;
 
-    const addAirportLayer = () => {
-      if (!map.getSource("fukuoka-airport")) {
-        map.addSource("fukuoka-airport", { type: "geojson", data: airportData });
-        map.addLayer({
-          id: "fukuoka-airport-spots",
-          type: "circle",
-          source: "fukuoka-airport",
-          paint: {
-            "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 16, 9],
-            "circle-color": "#f97316",
-            "circle-stroke-color": "#ffffff",
-            "circle-stroke-width": 2,
-          },
-        });
-        map.addLayer({
-          id: "fukuoka-airport-labels",
-          type: "symbol",
-          source: "fukuoka-airport",
-          layout: { "text-field": ["get", "name"], "text-size": 11, "text-offset": [0, 1.15], "text-allow-overlap": false },
-          paint: { "text-color": "#7c2d12", "text-halo-color": "#fff", "text-halo-width": 1.5 },
-        });
-      }
-      map.setLayoutProperty("fukuoka-airport-spots", "visibility", showAirport ? "visible" : "none");
-      map.setLayoutProperty("fukuoka-airport-labels", "visibility", showAirport ? "visible" : "none");
-    };
+    const markers = airportData.features.map((feature) => {
+      const element = document.createElement("div");
+      element.className = "airport-stand-marker";
+      element.textContent = feature.properties.name ?? "Spot";
+      element.title = `${feature.properties.name ?? "Spot"} · ${feature.properties.apron ?? "Fukuoka Airport"}`;
+      const [longitude, latitude] = feature.geometry.coordinates;
+      return new maplibregl.Marker({ element, anchor: "bottom" })
+        .setLngLat([longitude, latitude])
+        .addTo(map);
+    });
 
-    if (map.isStyleLoaded()) addAirportLayer();
-    else map.once("load", addAirportLayer);
-    return () => { map.off("load", addAirportLayer); };
+    return () => markers.forEach((marker) => marker.remove());
   }, [airportData, showAirport]);
 
   useEffect(() => {
