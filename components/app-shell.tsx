@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { getStoredUser, setStoredUser } from "@/lib/demo-data";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const currentUser = useMemo(() => getStoredUser(), [pathname]);
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getStoredUser>>(null);
+
+  useEffect(() => {
+    setCurrentUser(getStoredUser());
+  }, [pathname]);
 
   useEffect(() => {
     if (pathname === "/login" || pathname === "/") return;
@@ -23,6 +27,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setStoredUser(null);
+    setCurrentUser(null);
     router.push("/login");
   };
 

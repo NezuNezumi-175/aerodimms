@@ -1,0 +1,498 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.444503,
+                    33.601144
+                ]
+            },
+            "properties": {
+                "name": "1L",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333604.12N 1302640.21E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.445078,
+                    33.600544
+                ]
+            },
+            "properties": {
+                "name": "2",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333601.96N 1302642.28E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.445536,
+                    33.599875
+                ]
+            },
+            "properties": {
+                "name": "4",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333559.55N 1302643.93E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.445994,
+                    33.599233
+                ]
+            },
+            "properties": {
+                "name": "6L",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333557.24N 1302645.58E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.446756,
+                    33.598575
+                ]
+            },
+            "properties": {
+                "name": "7",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333554.87N 1302648.32E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.447144,
+                    33.598006
+                ]
+            },
+            "properties": {
+                "name": "8",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333552.82N 1302649.72E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.448125,
+                    33.596572
+                ]
+            },
+            "properties": {
+                "name": "9",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333547.66N 1302653.25E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.448511,
+                    33.596006
+                ]
+            },
+            "properties": {
+                "name": "10",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333545.62N 1302654.64E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.448586,
+                    33.595439
+                ]
+            },
+            "properties": {
+                "name": "11L",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333543.58N 1302654.91E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.449036,
+                    33.594781
+                ]
+            },
+            "properties": {
+                "name": "12L",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333541.21N 1302656.53E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.449439,
+                    33.592922
+                ]
+            },
+            "properties": {
+                "name": "13",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333534.52N 1302657.98E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.4501,
+                    33.591536
+                ]
+            },
+            "properties": {
+                "name": "16",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333529.53N 1302700.36E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.450686,
+                    33.590678
+                ]
+            },
+            "properties": {
+                "name": "18",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333526.44N 1302702.47E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.451419,
+                    33.590044
+                ]
+            },
+            "properties": {
+                "name": "20",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333524.16N 1302705.11E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.452642,
+                    33.588256
+                ]
+            },
+            "properties": {
+                "name": "25",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333517.72N 1302709.51E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.453506,
+                    33.587281
+                ]
+            },
+            "properties": {
+                "name": "28",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333514.21N 1302712.62E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.454219,
+                    33.585781
+                ]
+            },
+            "properties": {
+                "name": "30",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333508.81N 1302715.19E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.454544,
+                    33.585239
+                ]
+            },
+            "properties": {
+                "name": "31",
+                "type": "aircraft_stand",
+                "apron": "East Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333506.86N 1302716.36E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.441317,
+                    33.590861
+                ]
+            },
+            "properties": {
+                "name": "47",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333527.10N 1302628.74E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.442164,
+                    33.590183
+                ]
+            },
+            "properties": {
+                "name": "48L",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333524.66N 1302631.79E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.442558,
+                    33.589436
+                ]
+            },
+            "properties": {
+                "name": "49L",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333521.97N 1302633.21E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.442689,
+                    33.588883
+                ]
+            },
+            "properties": {
+                "name": "50",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333519.98N 1302633.68E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.443069,
+                    33.588281
+                ]
+            },
+            "properties": {
+                "name": "51R",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333517.81N 1302635.05E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.443558,
+                    33.588044
+                ]
+            },
+            "properties": {
+                "name": "51L",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333516.96N 1302636.81E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.443636,
+                    33.587467
+                ]
+            },
+            "properties": {
+                "name": "52",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333514.88N 1302637.09E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.444119,
+                    33.586761
+                ]
+            },
+            "properties": {
+                "name": "53",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333512.34N 1302638.83E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.44585,
+                    33.584269
+                ]
+            },
+            "properties": {
+                "name": "57",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333503.37N 1302645.06E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.446253,
+                    33.583683
+                ]
+            },
+            "properties": {
+                "name": "58",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333501.26N 1302646.51E"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    130.446614,
+                    33.583217
+                ]
+            },
+            "properties": {
+                "name": "59",
+                "type": "aircraft_stand",
+                "apron": "West Apron",
+                "source": "AIP Japan RJFF AD2-4, INS checkpoints table (Spot NR)",
+                "chart_coordinates": "333459.58N 1302647.81E"
+            }
+        }
+    ]
+}

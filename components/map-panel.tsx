@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+maplibregl.config.WORKER_URL = "/maplibre-gl-worker.mjs";
 import {
   loadDemoState,
   openFindingStatuses,
@@ -22,6 +24,8 @@ export function MapPanel() {
   const [errorMessage, setErrorMessage] = useState("");
   const [showAssets, setShowAssets] = useState(true);
   const [showFindings, setShowFindings] = useState(true);
+  const [showAirport, setShowAirport] = useState(true);
+  const [airportData, setAirportData] = useState<maplibregl.GeoJSONSourceSpecification["data"] | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
 
@@ -30,13 +34,42 @@ export function MapPanel() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch("/fukuoka-airport.geojson")
+      .then((response) => {
+        if (!response.ok) throw new Error("Failed to load Fukuoka Airport data.");
+        return response.json() as Promise<maplibregl.GeoJSONSourceSpecification["data"]>;
+      })
+      .then((data) => {
+        if (!cancelled) setAirportData(data);
+      })
+      .catch(() => {
+        if (!cancelled) setErrorMessage("福岡空港データを読み込めませんでした。");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (!mapContainer.current || !state || mapRef.current) return;
 
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: "https://demotiles.maplibre.org/style.json",
-      center: [100.2744, 5.2985],
-      zoom: 13,
+      style: {
+        version: 8,
+        sources: {
+          "esri-imagery": {
+            type: "raster",
+            tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+            tileSize: 256,
+            attribution: "Tiles © Esri — Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+          },
+        },
+        layers: [
+          { id: "esri-imagery", type: "raster", source: "esri-imagery", minzoom: 0, maxzoom: 19 },
+        ],
+      },
+      center: [130.4445, 33.6011],
+      zoom: 15,
       pitch: 20,
     });
 
@@ -56,6 +89,41 @@ export function MapPanel() {
       mapRef.current = null;
     };
   }, [state]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !airportData) return;
+
+    const addAirportLayer = () => {
+      if (!map.getSource("fukuoka-airport")) {
+        map.addSource("fukuoka-airport", { type: "geojson", data: airportData });
+        map.addLayer({
+          id: "fukuoka-airport-spots",
+          type: "circle",
+          source: "fukuoka-airport",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 4, 16, 9],
+            "circle-color": "#f97316",
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 2,
+          },
+        });
+        map.addLayer({
+          id: "fukuoka-airport-labels",
+          type: "symbol",
+          source: "fukuoka-airport",
+          layout: { "text-field": ["get", "name"], "text-size": 11, "text-offset": [0, 1.15], "text-allow-overlap": false },
+          paint: { "text-color": "#7c2d12", "text-halo-color": "#fff", "text-halo-width": 1.5 },
+        });
+      }
+      map.setLayoutProperty("fukuoka-airport-spots", "visibility", showAirport ? "visible" : "none");
+      map.setLayoutProperty("fukuoka-airport-labels", "visibility", showAirport ? "visible" : "none");
+    };
+
+    if (map.isStyleLoaded()) addAirportLayer();
+    else map.once("load", addAirportLayer);
+    return () => { map.off("load", addAirportLayer); };
+  }, [airportData, showAirport]);
 
   useEffect(() => {
     if (!mapRef.current || !state) return;
@@ -196,6 +264,10 @@ export function MapPanel() {
           </button>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={showAirport} onChange={() => setShowAirport((value) => !value)} />
+              福岡空港スポット
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
               <input type="checkbox" checked={showAssets} onChange={() => setShowAssets((value) => !value)} />
               Assets
             </label>
@@ -213,12 +285,12 @@ export function MapPanel() {
         ) : null}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.4fr_0.6fr]">
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div ref={mapContainer} className="h-[560px] w-full" />
+      <div className="space-y-4">
+        <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div ref={mapContainer} className="h-[min(72vh,820px)] min-h-[560px] w-full" />
         </div>
 
-        <div className="space-y-4">
+        {selectedFinding || selectedAsset ? <div className="space-y-4">
           {selectedFinding ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Finding</p>
@@ -257,7 +329,7 @@ export function MapPanel() {
               Select a finding or asset marker to inspect operational details.
             </div>
           ) : null}
-        </div>
+        </div> : null}
       </div>
     </div>
   );
