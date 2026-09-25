@@ -39,6 +39,7 @@ export interface Finding {
   latitude: number;
   longitude: number;
   assetId?: string;
+  airportStandCode?: string;
   assignedTo?: string;
   assignedTeam?: string;
   targetCompletionDate?: string;
@@ -113,9 +114,9 @@ export const assets: Asset[] = [
 ];
 
 export const findings: Finding[] = [
-  { id: "f-101", findingCode: "F-101", source: "INTERNAL_INSPECTION", title: "Runway Edge Light Defect", description: "Damaged runway edge light at threshold area requiring replacement.", severity: "CRITICAL", status: "IN_PROGRESS", locationName: "Runway 04", latitude: 5.29853, longitude: 100.27446, assetId: "asset-1", assignedTo: "u-1", assignedTeam: "AGL Maintenance", targetCompletionDate: "2026-09-27", createdBy: "u-2", createdAt: "2026-09-15T08:42:00Z", updatedAt: "2026-09-25T15:15:00Z" },
-  { id: "f-102", findingCode: "F-102", source: "INTERNAL_INSPECTION", title: "Taxiway Surface Defect", description: "Surface spalling near Taxiway A causing operational concern.", severity: "HIGH", status: "ASSIGNED", locationName: "Taxiway A", latitude: 5.29934, longitude: 100.27673, assetId: "asset-6", assignedTo: "u-1", assignedTeam: "Pavement Team", targetCompletionDate: "2026-09-29", createdBy: "u-2", createdAt: "2026-09-14T09:05:00Z", updatedAt: "2026-09-25T13:50:00Z" },
-  { id: "f-103", findingCode: "F-103", source: "REGULATORY", title: "Wildlife Hazard", description: "Wildlife activity near apron edge needs monitoring and deterrence.", severity: "HIGH", status: "PENDING_VERIFICATION", locationName: "Apron", latitude: 5.30093, longitude: 100.2801, assignedTeam: "Operations", createdBy: "u-3", createdAt: "2026-09-18T10:15:00Z", updatedAt: "2026-09-25T10:37:00Z" },
+  { id: "f-101", findingCode: "F-101", source: "INTERNAL_INSPECTION", title: "Parking Bay Guidance Light Defect", description: "Critical guidance light failure at Parking Bay 1L requires immediate replacement.", severity: "CRITICAL", status: "IN_PROGRESS", locationName: "Parking Bay 1L", latitude: 33.60118, longitude: 130.44456, assetId: "asset-1", airportStandCode: "1L", assignedTo: "u-1", assignedTeam: "AGL Maintenance", targetCompletionDate: "2026-09-27", createdBy: "u-2", createdAt: "2026-09-15T08:42:00Z", updatedAt: "2026-09-25T15:15:00Z" },
+  { id: "f-102", findingCode: "F-102", source: "INTERNAL_INSPECTION", title: "Parking Bay Surface Marking Faded", description: "Faded surface marking at Parking Bay 2 needs repainting during the next maintenance window.", severity: "HIGH", status: "ASSIGNED", locationName: "Parking Bay 2", latitude: 33.60058, longitude: 130.44513, assetId: "asset-6", airportStandCode: "2", assignedTo: "u-1", assignedTeam: "Pavement Team", targetCompletionDate: "2026-09-29", createdBy: "u-2", createdAt: "2026-09-14T09:05:00Z", updatedAt: "2026-09-25T13:50:00Z" },
+  { id: "f-103", findingCode: "F-103", source: "INTERNAL_INSPECTION", title: "Taxiway Pavement Pothole", description: "Pavement damage detected on Taxiway A requiring maintenance attention.", severity: "CRITICAL", status: "ASSIGNED", locationName: "Taxiway A", latitude: 33.599367, longitude: 130.443789, assignedTeam: "Pavement Team", createdBy: "u-2", createdAt: "2026-09-18T10:15:00Z", updatedAt: "2026-09-25T10:37:00Z" },
   { id: "f-104", findingCode: "F-104", source: "INTERNAL_INSPECTION", title: "Apron Light Failure", description: "Floodlight near apron stand is not delivering full illumination.", severity: "MEDIUM", status: "FINDING", locationName: "Apron South", latitude: 5.30074, longitude: 100.27974, assetId: "asset-7", createdBy: "u-2", createdAt: "2026-09-16T14:12:00Z", updatedAt: "2026-09-25T11:00:00Z" },
   { id: "f-105", findingCode: "F-105", source: "INTERNAL_INSPECTION", title: "Runway Sign Damage", description: "Runway signage at holding bay requires replacement.", severity: "MEDIUM", status: "WORK_ORDER", locationName: "Holding Bay", latitude: 5.29712, longitude: 100.27285, assetId: "asset-9", assignedTo: "u-1", assignedTeam: "Signage Team", targetCompletionDate: "2026-09-30", createdBy: "u-2", createdAt: "2026-09-11T07:18:00Z", updatedAt: "2026-09-25T12:25:00Z" },
   { id: "f-106", findingCode: "F-106", source: "INTERNAL_INSPECTION", title: "Perimeter Fence Crack", description: "Fence segment along northern boundary has a damaged section.", severity: "LOW", status: "ASSIGNED", locationName: "Northern Boundary", latitude: 5.30254, longitude: 100.27262, assetId: "asset-8", assignedTeam: "Security Works", createdBy: "u-2", createdAt: "2026-09-12T15:40:00Z", updatedAt: "2026-09-25T08:04:00Z" },
@@ -196,7 +197,30 @@ export function loadDemoState(): DemoState {
   }
 
   try {
-    return JSON.parse(raw) as DemoState;
+    const storedState = JSON.parse(raw) as DemoState;
+    return {
+      ...storedState,
+      findings: storedState.findings.map((finding) => {
+        const demoFinding = defaultState.findings.find(
+          (item) => item.id === finding.id && (item.airportStandCode || item.id === "f-103"),
+        );
+
+        return demoFinding
+          ? {
+              ...finding,
+              title: demoFinding.title,
+              description: demoFinding.description,
+              locationName: demoFinding.locationName,
+              severity: demoFinding.severity,
+              status: demoFinding.status,
+              assignedTeam: demoFinding.assignedTeam,
+              airportStandCode: demoFinding.airportStandCode,
+              latitude: demoFinding.latitude,
+              longitude: demoFinding.longitude,
+            }
+          : finding;
+      }),
+    };
   } catch {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
     return defaultState;

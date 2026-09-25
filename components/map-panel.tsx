@@ -14,8 +14,15 @@ import {
   type Asset,
   type DemoState,
   type Finding,
-  type Severity,
 } from "@/lib/demo-data";
+
+type AirportStand = {
+  code: string;
+  apron?: string;
+  latitude: number;
+  longitude: number;
+  openFindings: Finding[];
+};
 
 export function MapPanel() {
   const mapContainer = useRef<HTMLDivElement | null>(null);
@@ -28,6 +35,7 @@ export function MapPanel() {
   const [showAirport, setShowAirport] = useState(true);
   const [airportData, setAirportData] = useState<FeatureCollection<Point, { name?: string; type?: string; apron?: string }> | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [selectedStand, setSelectedStand] = useState<AirportStand | null>(null);
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
 
   useEffect(() => {
@@ -62,15 +70,17 @@ export function MapPanel() {
             type: "raster",
             tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
             tileSize: 256,
+            maxzoom: 18,
             attribution: "Tiles © Esri — Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
           },
         },
         layers: [
-          { id: "esri-imagery", type: "raster", source: "esri-imagery", minzoom: 0, maxzoom: 19 },
+          { id: "esri-imagery", type: "raster", source: "esri-imagery", minzoom: 0, maxzoom: 18 },
         ],
       },
       center: [130.4445, 33.6011],
       zoom: 15,
+      maxZoom: 18,
       pitch: 20,
     });
 
@@ -93,7 +103,7 @@ export function MapPanel() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !airportData || !showAirport) return;
+    if (!map || !airportData || !state || !showAirport) return;
 
     const markers = airportData.features.map((feature) => {
       const element = document.createElement("div");
@@ -101,13 +111,23 @@ export function MapPanel() {
       element.textContent = feature.properties.name ?? "Spot";
       element.title = `${feature.properties.name ?? "Spot"} · ${feature.properties.apron ?? "Fukuoka Airport"}`;
       const [longitude, latitude] = feature.geometry.coordinates;
+      const code = feature.properties.name ?? "Spot";
+      const openFindings = state.findings.filter(
+        (finding) => finding.airportStandCode === code && openFindingStatuses.has(finding.status),
+      );
+      element.addEventListener("click", () => {
+        setSelectedAsset(null);
+        setSelectedFinding(null);
+        setSelectedStand({ code, apron: feature.properties.apron, latitude, longitude, openFindings });
+        map.flyTo({ center: [longitude, latitude], zoom: 15 });
+      });
       return new maplibregl.Marker({ element, anchor: "bottom" })
         .setLngLat([longitude, latitude])
         .addTo(map);
     });
 
     return () => markers.forEach((marker) => marker.remove());
-  }, [airportData, showAirport]);
+  }, [airportData, showAirport, state]);
 
   useEffect(() => {
     if (!mapRef.current || !state) return;
@@ -115,16 +135,20 @@ export function MapPanel() {
     const map = mapRef.current;
     const markers: maplibregl.Marker[] = [];
 
-    const markerContainer = (color: string, label: string, onClick?: () => void) => {
+    const markerContainer = (color: string, label: string, onClick?: () => void, markerText = "") => {
       const button = document.createElement("button");
       button.type = "button";
-      button.style.width = "16px";
-      button.style.height = "16px";
+      button.textContent = markerText;
+      button.style.width = "18px";
+      button.style.height = "18px";
       button.style.borderRadius = "9999px";
       button.style.border = "2px solid #fff";
       button.style.background = color;
       button.style.boxShadow = "0 6px 18px rgba(15, 23, 42, 0.3)";
       button.style.cursor = "pointer";
+      button.style.display = "flex";
+      button.style.alignItems = "center";
+      button.style.justifyContent = "center";
       button.title = label;
       if (onClick) button.addEventListener("click", onClick);
       return button;
@@ -139,6 +163,7 @@ export function MapPanel() {
           .addTo(map);
 
         marker.getElement().addEventListener("click", () => {
+          setSelectedStand(null);
           setSelectedFinding(null);
           setSelectedAsset(asset);
           map.flyTo({ center: [asset.longitude, asset.latitude], zoom: 15 });
@@ -151,14 +176,28 @@ export function MapPanel() {
       state.findings
         .filter((finding) => openFindingStatuses.has(finding.status))
         .forEach((finding) => {
-          const severityColor = severityColors[finding.severity as Severity] || "#4b5563";
+          const severityColor = finding.severity === "CRITICAL" ? severityColors.CRITICAL : "#2563eb";
           const marker = new maplibregl.Marker({
-            element: markerContainer(severityColor, `Finding: ${finding.findingCode}`),
+            element: markerContainer(severityColor, `Finding: ${finding.findingCode}`, undefined, "!"),
           })
-            .setLngLat([finding.longitude, finding.latitude])
+            .setLngLat([
+              finding.longitude,
+              finding.latitude + (finding.airportStandCode ? 0.00008 : 0),
+            ])
             .addTo(map);
 
+          marker.getElement().style.width = "24px";
+          marker.getElement().style.height = "24px";
+          marker.getElement().style.border = "3px solid #fff";
+          marker.getElement().style.color = "#fff";
+          marker.getElement().style.fontSize = "14px";
+          marker.getElement().style.fontWeight = "800";
+          marker.getElement().style.lineHeight = "1";
+          marker.getElement().style.zIndex = "2";
+          marker.getElement().style.boxShadow = "0 3px 10px rgba(15, 23, 42, 0.45)";
+
           marker.getElement().addEventListener("click", () => {
+            setSelectedStand(null);
             setSelectedAsset(null);
             setSelectedFinding(finding);
             map.flyTo({ center: [finding.longitude, finding.latitude], zoom: 15 });
@@ -210,6 +249,7 @@ export function MapPanel() {
     setErrorMessage("");
     if (match.type === "asset") {
       const asset = match.item as Asset;
+      setSelectedStand(null);
       setSelectedFinding(null);
       setSelectedAsset(asset);
       mapRef.current.flyTo({ center: [asset.longitude, asset.latitude], zoom: 15 });
@@ -217,6 +257,7 @@ export function MapPanel() {
     }
 
     const finding = match.item as Finding;
+    setSelectedStand(null);
     setSelectedAsset(null);
     setSelectedFinding(finding);
     mapRef.current.flyTo({ center: [finding.longitude, finding.latitude], zoom: 15 });
@@ -274,16 +315,35 @@ export function MapPanel() {
           <div ref={mapContainer} className="h-[min(72vh,820px)] min-h-[560px] w-full" />
         </div>
 
-        {selectedFinding || selectedAsset ? <div className="space-y-4">
+        {selectedFinding || selectedAsset || selectedStand ? <div className="space-y-4">
+          {selectedStand ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Parking Bay / Stand</p>
+              <h3 className="mt-3 text-2xl font-bold text-slate-900">{selectedStand.code}</h3>
+              <div className="mt-4 space-y-2 text-sm text-slate-600">
+                <p><span className="font-semibold text-slate-800">Apron:</span> {selectedStand.apron ?? "Not specified"}</p>
+                <p><span className="font-semibold text-slate-800">Latitude:</span> {selectedStand.latitude.toFixed(6)}</p>
+                <p><span className="font-semibold text-slate-800">Longitude:</span> {selectedStand.longitude.toFixed(6)}</p>
+                <p><span className="font-semibold text-slate-800">Status:</span> {selectedStand.openFindings.length ? "Problem" : "Normal"}</p>
+                <p><span className="font-semibold text-slate-800">Open Findings:</span> {selectedStand.openFindings.length}</p>
+              </div>
+            </div>
+          ) : null}
+
           {selectedFinding ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Finding</p>
               <h3 className="mt-3 text-2xl font-bold text-slate-900">{selectedFinding.findingCode}</h3>
               <p className="mt-2 text-lg font-semibold text-slate-700">{selectedFinding.title}</p>
+              <p className="mt-2 text-sm text-slate-600">{selectedFinding.description}</p>
               <div className="mt-4 space-y-2 text-sm text-slate-600">
+                <p><span className="font-semibold text-slate-800">Location:</span> {selectedFinding.locationName}</p>
+                <p><span className="font-semibold text-slate-800">Latitude:</span> {selectedFinding.latitude.toFixed(6)}</p>
+                <p><span className="font-semibold text-slate-800">Longitude:</span> {selectedFinding.longitude.toFixed(6)}</p>
                 <p><span className="font-semibold text-slate-800">Severity:</span> {selectedFinding.severity}</p>
                 <p><span className="font-semibold text-slate-800">Status:</span> {selectedFinding.status}</p>
-                <p><span className="font-semibold text-slate-800">Location:</span> {selectedFinding.locationName}</p>
+                {selectedFinding.assignedTo ? <p><span className="font-semibold text-slate-800">Assigned Person:</span> {selectedFinding.assignedTo}</p> : null}
+                {selectedFinding.assignedTeam ? <p><span className="font-semibold text-slate-800">Assigned Team:</span> {selectedFinding.assignedTeam}</p> : null}
                 <p><span className="font-semibold text-slate-800">Created:</span> {new Date(selectedFinding.createdAt).toLocaleDateString()}</p>
               </div>
               <Link
@@ -308,7 +368,7 @@ export function MapPanel() {
             </div>
           ) : null}
 
-          {!selectedFinding && !selectedAsset ? (
+          {!selectedFinding && !selectedAsset && !selectedStand ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500 shadow-sm">
               Select a finding or asset marker to inspect operational details.
             </div>
