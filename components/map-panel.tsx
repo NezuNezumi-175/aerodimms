@@ -1,0 +1,264 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import * as maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
+import {
+  loadDemoState,
+  openFindingStatuses,
+  severityColors,
+  type Asset,
+  type DemoState,
+  type Finding,
+  type Severity,
+} from "@/lib/demo-data";
+
+export function MapPanel() {
+  const mapContainer = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const [state, setState] = useState<DemoState | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [showAssets, setShowAssets] = useState(true);
+  const [showFindings, setShowFindings] = useState(true);
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
+
+  useEffect(() => {
+    setState(loadDemoState());
+  }, []);
+
+  useEffect(() => {
+    if (!mapContainer.current || !state || mapRef.current) return;
+
+    const map = new maplibregl.Map({
+      container: mapContainer.current,
+      style: "https://demotiles.maplibre.org/style.json",
+      center: [100.2744, 5.2985],
+      zoom: 13,
+      pitch: 20,
+    });
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), "top-right");
+    map.addControl(
+      new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+      }),
+      "top-left",
+    );
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [state]);
+
+  useEffect(() => {
+    if (!mapRef.current || !state) return;
+
+    const map = mapRef.current;
+    const markers: maplibregl.Marker[] = [];
+
+    const markerContainer = (color: string, label: string, onClick?: () => void) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.style.width = "16px";
+      button.style.height = "16px";
+      button.style.borderRadius = "9999px";
+      button.style.border = "2px solid #fff";
+      button.style.background = color;
+      button.style.boxShadow = "0 6px 18px rgba(15, 23, 42, 0.3)";
+      button.style.cursor = "pointer";
+      button.title = label;
+      if (onClick) button.addEventListener("click", onClick);
+      return button;
+    };
+
+    if (showAssets) {
+      state.assets.forEach((asset) => {
+        const marker = new maplibregl.Marker({
+          element: markerContainer("#0ea5e9", `Asset: ${asset.assetCode}`),
+        })
+          .setLngLat([asset.longitude, asset.latitude])
+          .addTo(map);
+
+        marker.getElement().addEventListener("click", () => {
+          setSelectedFinding(null);
+          setSelectedAsset(asset);
+          map.flyTo({ center: [asset.longitude, asset.latitude], zoom: 15 });
+        });
+        markers.push(marker);
+      });
+    }
+
+    if (showFindings) {
+      state.findings
+        .filter((finding) => openFindingStatuses.has(finding.status))
+        .forEach((finding) => {
+          const severityColor = severityColors[finding.severity as Severity] || "#4b5563";
+          const marker = new maplibregl.Marker({
+            element: markerContainer(severityColor, `Finding: ${finding.findingCode}`),
+          })
+            .setLngLat([finding.longitude, finding.latitude])
+            .addTo(map);
+
+          marker.getElement().addEventListener("click", () => {
+            setSelectedAsset(null);
+            setSelectedFinding(finding);
+            map.flyTo({ center: [finding.longitude, finding.latitude], zoom: 15 });
+          });
+          markers.push(marker);
+        });
+    }
+
+    return () => {
+      markers.forEach((marker) => marker.remove());
+    };
+  }, [state, showAssets, showFindings]);
+
+  const searchableRecords = useMemo(() => {
+    if (!state) return [] as Array<{ value: string; type: "asset" | "finding"; item: Asset | Finding }>;
+
+    return [
+      ...state.assets.map((asset) => ({ value: asset.assetCode.toLowerCase(), type: "asset" as const, item: asset })),
+      ...state.findings.map((finding) => ({ value: finding.findingCode.toLowerCase(), type: "finding" as const, item: finding })),
+    ];
+  }, [state]);
+
+  const handleSearch = () => {
+    if (!state || !mapRef.current) return;
+
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) {
+      setErrorMessage("");
+      return;
+    }
+
+    const match = searchableRecords.find((record) => {
+      const reference = record.value;
+      const asset = record.type === "asset" ? (record.item as Asset) : null;
+      const finding = record.type === "finding" ? (record.item as Finding) : null;
+
+      return (
+        reference.includes(query) ||
+        (asset && `${asset.name} ${asset.locationName}`.toLowerCase().includes(query)) ||
+        (finding && `${finding.title} ${finding.locationName}`.toLowerCase().includes(query))
+      );
+    });
+
+    if (!match) {
+      setErrorMessage("No matching asset or finding found.");
+      return;
+    }
+
+    setErrorMessage("");
+    if (match.type === "asset") {
+      const asset = match.item as Asset;
+      setSelectedFinding(null);
+      setSelectedAsset(asset);
+      mapRef.current.flyTo({ center: [asset.longitude, asset.latitude], zoom: 15 });
+      return;
+    }
+
+    const finding = match.item as Finding;
+    setSelectedAsset(null);
+    setSelectedFinding(finding);
+    mapRef.current.flyTo({ center: [finding.longitude, finding.latitude], zoom: 15 });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Spatial view</p>
+          <h1 className="mt-2 text-3xl font-bold text-slate-900">Map</h1>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none focus:border-sky-400"
+            placeholder="Search: F-102, Runway 04, AGL-001"
+          />
+          <button
+            type="button"
+            onClick={handleSearch}
+            className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700"
+          >
+            Search
+          </button>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={showAssets} onChange={() => setShowAssets((value) => !value)} />
+              Assets
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={showFindings} onChange={() => setShowFindings((value) => !value)} />
+              Open Findings
+            </label>
+          </div>
+        </div>
+
+        {errorMessage ? (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {errorMessage}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.4fr_0.6fr]">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div ref={mapContainer} className="h-[560px] w-full" />
+        </div>
+
+        <div className="space-y-4">
+          {selectedFinding ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Finding</p>
+              <h3 className="mt-3 text-2xl font-bold text-slate-900">{selectedFinding.findingCode}</h3>
+              <p className="mt-2 text-lg font-semibold text-slate-700">{selectedFinding.title}</p>
+              <div className="mt-4 space-y-2 text-sm text-slate-600">
+                <p><span className="font-semibold text-slate-800">Severity:</span> {selectedFinding.severity}</p>
+                <p><span className="font-semibold text-slate-800">Status:</span> {selectedFinding.status}</p>
+                <p><span className="font-semibold text-slate-800">Location:</span> {selectedFinding.locationName}</p>
+                <p><span className="font-semibold text-slate-800">Created:</span> {new Date(selectedFinding.createdAt).toLocaleDateString()}</p>
+              </div>
+              <Link
+                href={`/issues/${selectedFinding.findingCode}`}
+                className="mt-5 inline-flex rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700"
+              >
+                View Issue
+              </Link>
+            </div>
+          ) : null}
+
+          {selectedAsset ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Asset</p>
+              <h3 className="mt-3 text-2xl font-bold text-slate-900">{selectedAsset.assetCode}</h3>
+              <p className="mt-2 text-lg font-semibold text-slate-700">{selectedAsset.name}</p>
+              <div className="mt-4 space-y-2 text-sm text-slate-600">
+                <p><span className="font-semibold text-slate-800">Type:</span> {selectedAsset.assetType}</p>
+                <p><span className="font-semibold text-slate-800">Location:</span> {selectedAsset.locationName}</p>
+                <p><span className="font-semibold text-slate-800">Status:</span> {selectedAsset.status}</p>
+              </div>
+            </div>
+          ) : null}
+
+          {!selectedFinding && !selectedAsset ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500 shadow-sm">
+              Select a finding or asset marker to inspect operational details.
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
