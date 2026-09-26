@@ -1,49 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { CompletedInspectionView } from "@/components/completed-inspection-view";
+import { FindingForm } from "@/components/finding-form";
 import {
   allInspections,
   checklistByInspectionType,
   type CompletedInspectionFinding,
   type CompletedInspectionRecord,
+  type EvidenceAttachment,
+  type FindingDraft,
+  type FindingCategory,
+  type FindingSeverity,
+  type GpsLocation,
   type InspectionStatus,
 } from "@/lib/inspection-data";
 import { loadDemoState } from "@/lib/demo-data";
+import { createFindingEvidence, requestFindingGps } from "@/lib/finding-form";
 import { completeInspectionAndTransfer } from "@/lib/inspection-workflow";
 
 type ChecklistResult = "Pass" | "Fail" | "N/A";
 type ChecklistAnswer = { result?: ChecklistResult; remark: string };
-type FindingCategory =
-  | "Pavement / Surface"
-  | "FOD"
-  | "Lighting / AGL"
-  | "Markings"
-  | "Drainage"
-  | "Wildlife Hazard"
-  | "Facility / Infrastructure"
-  | "Other";
-type FindingSeverity = "Low" | "Medium" | "High" | "Critical";
-type GpsLocation = { latitude: number; longitude: number; capturedAt: string };
-type EvidenceAttachment = {
-  localId: string;
-  file: File;
-  fileName: string;
-  fileType: string;
-  fileSize: number;
-  previewUrl: string;
-};
-type FindingDraft = {
-  description: string;
-  category: FindingCategory | "";
-  severity: FindingSeverity | "";
-  area: string;
-  remarks: string;
-  gps: GpsLocation | null;
-  evidence: EvidenceAttachment[];
-};
 type LocalFinding = {
   id: string;
   inspectionId: string;
@@ -66,43 +44,6 @@ const statusStyles: Record<InspectionStatus, string> = {
 };
 
 const resultOptions: ChecklistResult[] = ["Pass", "Fail", "N/A"];
-const findingCategories: FindingCategory[] = [
-  "Pavement / Surface",
-  "FOD",
-  "Lighting / AGL",
-  "Markings",
-  "Drainage",
-  "Wildlife Hazard",
-  "Facility / Infrastructure",
-  "Other",
-];
-const findingSeverities: FindingSeverity[] = ["Low", "Medium", "High", "Critical"];
-const severityStyles: Record<FindingSeverity, string> = {
-  Low: "border-emerald-600 bg-emerald-600 text-white",
-  Medium: "border-amber-500 bg-amber-500 text-white",
-  High: "border-orange-600 bg-orange-600 text-white",
-  Critical: "border-red-700 bg-red-700 text-white",
-};
-const formControlClass =
-  "mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-400 focus:bg-white";
-const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-
-function getImageType(file: File): string | null {
-  if (acceptedImageTypes.has(file.type)) return file.type;
-
-  const extension = file.name.split(".").pop()?.toLowerCase();
-  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
-  if (extension === "png") return "image/png";
-  if (extension === "webp") return "image/webp";
-  return null;
-}
-
-function formatFileSize(size: number) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function createEmptyFindingDraft(area = ""): FindingDraft {
   return { description: "", category: "", severity: "", area, remarks: "", gps: null, evidence: [] };
 }
@@ -256,11 +197,10 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     setFindingFormFor(checklistItemId);
   };
 
-  const saveFinding = (event: FormEvent<HTMLFormElement>, checklistItemId: string, checklistItemTitle: string) => {
-    event.preventDefault();
-    const description = findingDraft.description.trim();
+  const saveFinding = (checklistItemId: string, checklistItemTitle: string, draft: FindingDraft) => {
+    const description = draft.description.trim();
 
-    if (!description || !findingDraft.category || !findingDraft.severity) {
+    if (!description || !draft.category || !draft.severity) {
       setFindingFormError("Enter a description, category, and severity before saving.");
       return;
     }
@@ -272,12 +212,12 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       checklistItemId,
       checklistItemTitle,
       description,
-      category: findingDraft.category,
-      severity: findingDraft.severity,
-      area: findingDraft.area.trim() || inspection.area,
-      remarks: findingDraft.remarks.trim(),
-      gps: findingDraft.gps,
-      evidence: findingDraft.evidence,
+      category: draft.category,
+      severity: draft.severity,
+      area: draft.area.trim() || inspection.area,
+      remarks: draft.remarks.trim(),
+      gps: draft.gps,
+      evidence: draft.evidence,
       createdAt: existingFinding?.createdAt ?? new Date().toISOString(),
     };
 
@@ -374,64 +314,33 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     }
 
     setGpsLoadingFor(checklistItemId);
-    try {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const gps: GpsLocation = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            capturedAt: new Date().toISOString(),
-          };
-          if (findingFormForRef.current === checklistItemId) {
-            setFindingDraft((current) => ({ ...current, gps }));
-          } else if (findingFormForRef.current === null) {
-            setFindings((current) => current.map((finding) =>
-              finding.inspectionId === inspection.id && finding.checklistItemId === checklistItemId
-                ? { ...finding, gps }
-                : finding,
-            ));
-          }
-          setGpsLoadingFor(null);
-        },
-        () => {
-          setGpsError("Location unavailable. You can continue the inspection without GPS.");
-          setGpsErrorFor(checklistItemId);
-          setGpsLoadingFor(null);
-        },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
-      );
-    } catch {
-      setGpsError("Location unavailable. You can continue the inspection without GPS.");
-      setGpsErrorFor(checklistItemId);
-      setGpsLoadingFor(null);
-    }
+    requestFindingGps(
+      (gps) => {
+        if (findingFormForRef.current === checklistItemId) {
+          setFindingDraft((current) => ({ ...current, gps }));
+        } else if (findingFormForRef.current === null) {
+          setFindings((current) => current.map((finding) =>
+            finding.inspectionId === inspection.id && finding.checklistItemId === checklistItemId
+              ? { ...finding, gps }
+              : finding,
+          ));
+        }
+        setGpsLoadingFor(null);
+      },
+      () => {
+        setGpsError("Location unavailable. You can continue the inspection without GPS.");
+        setGpsErrorFor(checklistItemId);
+        setGpsLoadingFor(null);
+      },
+    );
   };
 
   const addEvidence = (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.currentTarget.files ?? []);
-    const attachments: EvidenceAttachment[] = [];
-    let rejectedCount = 0;
-
-    selectedFiles.forEach((file) => {
-      const fileType = getImageType(file);
-      if (!fileType) {
-        rejectedCount += 1;
-        return;
-      }
-
-      const previewUrl = URL.createObjectURL(file);
-      objectUrlsRef.current.add(previewUrl);
-      attachments.push({
-        localId: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `evidence-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        file,
-        fileName: file.name,
-        fileType,
-        fileSize: file.size,
-        previewUrl,
-      });
-    });
+    const { attachments, rejectedCount } = createFindingEvidence(
+      selectedFiles,
+      (previewUrl) => objectUrlsRef.current.add(previewUrl),
+    );
 
     if (attachments.length) {
       setFindingDraft((current) => ({ ...current, evidence: [...current.evidence, ...attachments] }));
@@ -580,186 +489,32 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
                 ) : null}
 
                 {isFindingFormOpen ? (
-                  <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/50 p-4 sm:p-5">
-                    <div className="mb-4 border-b border-sky-100 pb-3">
-                      <h4 className="font-semibold text-slate-900">
-                        {existingFinding ? `Edit Finding ${existingFinding.id}` : "Record Finding"}
-                      </h4>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Linked to {inspection.id} / {item.id} / {item.label}
-                      </p>
-                    </div>
-
-                    <form onSubmit={(event) => saveFinding(event, item.id, item.label)} className="space-y-4">
-                      <label className="block">
-                        <span className="text-sm font-medium text-slate-700">Finding Description <span className="text-red-600">*</span></span>
-                        <textarea
-                          required
-                          rows={3}
-                          maxLength={1000}
-                          value={findingDraft.description}
-                          onChange={(event) => updateFindingDraft({ description: event.target.value })}
-                          className={formControlClass}
-                          placeholder="Describe the observed condition or hazard"
-                        />
-                      </label>
-
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <label className="block">
-                          <span className="text-sm font-medium text-slate-700">Category <span className="text-red-600">*</span></span>
-                          <select
-                            required
-                            value={findingDraft.category}
-                            onChange={(event) => updateFindingDraft({ category: event.target.value as FindingCategory | "" })}
-                            className={formControlClass}
-                          >
-                            <option value="">Select a category</option>
-                            {findingCategories.map((category) => <option key={category} value={category}>{category}</option>)}
-                          </select>
-                        </label>
-
-                        <fieldset>
-                          <legend className="text-sm font-medium text-slate-700">
-                            Priority / Severity <span className="text-red-600">*</span>
-                          </legend>
-                          <div role="group" aria-label="Finding severity" className="mt-1.5 flex flex-wrap gap-2">
-                            {findingSeverities.map((severity) => {
-                              const selected = findingDraft.severity === severity;
-                              return (
-                                <button
-                                  key={severity}
-                                  type="button"
-                                  aria-pressed={selected}
-                                  onClick={() => updateFindingDraft({ severity })}
-                                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
-                                    selected ? severityStyles[severity] : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                  }`}
-                                >
-                                  {severity}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </fieldset>
-                      </div>
-
-                      <label className="block">
-                        <span className="text-sm font-medium text-slate-700">Location / Area</span>
-                        <input
-                          required
-                          value={findingDraft.area}
-                          onChange={(event) => updateFindingDraft({ area: event.target.value })}
-                          className={formControlClass}
-                        />
-                      </label>
-
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <section aria-label="GPS location" className="rounded-lg border border-slate-200 bg-white p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <h5 className="text-sm font-semibold text-slate-700">GPS Location</h5>
-                            {findingDraft.gps ? <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">Captured</span> : null}
-                          </div>
-                          {findingDraft.gps ? (
-                            <dl className="mt-3 space-y-1.5 text-xs text-slate-600">
-                              <div className="flex justify-between gap-2"><dt>Latitude</dt><dd className="font-medium text-slate-800">{findingDraft.gps.latitude.toFixed(6)}</dd></div>
-                              <div className="flex justify-between gap-2"><dt>Longitude</dt><dd className="font-medium text-slate-800">{findingDraft.gps.longitude.toFixed(6)}</dd></div>
-                              <div><dt className="text-slate-500">Captured</dt><dd className="mt-0.5 font-medium text-slate-800">{new Date(findingDraft.gps.capturedAt).toLocaleString()}</dd></div>
-                            </dl>
-                          ) : <p className="mt-1 text-sm text-slate-500">GPS location not captured yet</p>}
-                          {gpsErrorFor === item.id && gpsError ? <p role="status" className="mt-2 text-xs text-amber-800">{gpsError}</p> : null}
-                          <button
-                            type="button"
-                            disabled={gpsLoadingFor !== null}
-                            onClick={() => captureGps(item.id)}
-                            className="mt-3 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
-                          >
-                            {gpsLoadingFor === item.id ? "Capturing location..." : findingDraft.gps ? "Update GPS Location" : "Capture GPS Location"}
-                          </button>
-                        </section>
-                        <section aria-label="Evidence" className="rounded-lg border border-slate-200 bg-white p-3">
-                          <h5 className="text-sm font-semibold text-slate-700">Photo / Evidence</h5>
-                          <label className="mt-2 block text-sm text-slate-600">
-                            <span className="sr-only">Add Photo / Evidence</span>
-                            <input
-                              type="file"
-                              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                              capture="environment"
-                              multiple
-                              onChange={addEvidence}
-                              className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-700 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:bg-sky-800"
-                            />
-                          </label>
-                          {findingDraft.evidence.length ? (
-                            <ul className="mt-3 divide-y divide-slate-100">
-                              {findingDraft.evidence.map((attachment) => (
-                                <li key={attachment.localId} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                                  <Image
-                                    src={attachment.previewUrl}
-                                    alt={`Preview of ${attachment.fileName}`}
-                                    width={64}
-                                    height={64}
-                                    unoptimized
-                                    className="h-16 w-16 shrink-0 rounded-md border border-slate-200 object-cover"
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <p className="break-all text-xs font-medium text-slate-800">{attachment.fileName}</p>
-                                    <p className="mt-1 text-xs text-slate-500">{attachment.fileType} · {formatFileSize(attachment.fileSize)}</p>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setFindingDraft((current) => ({
-                                        ...current,
-                                        evidence: current.evidence.filter((item) => item.localId !== attachment.localId),
-                                      }));
-                                      setEvidenceError("");
-                                    }}
-                                    className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                                  >
-                                    Remove
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : <p className="mt-2 text-sm text-slate-500">No evidence attached</p>}
-                          {evidenceError ? <p role="alert" className="mt-2 text-xs text-amber-800">{evidenceError}</p> : null}
-                        </section>
-                      </div>
-
-                      <label className="block">
-                        <span className="text-sm font-medium text-slate-700">Remarks (optional)</span>
-                        <textarea
-                          rows={2}
-                          maxLength={500}
-                          value={findingDraft.remarks}
-                          onChange={(event) => updateFindingDraft({ remarks: event.target.value })}
-                          className={formControlClass}
-                          placeholder="Additional context"
-                        />
-                      </label>
-
-                      {findingFormError ? <p role="alert" className="text-sm font-medium text-red-700">{findingFormError}</p> : null}
-
-                      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                        <button
-                          type="button"
-                          disabled={gpsLoadingFor !== null}
-                          onClick={() => {
-                            findingFormForRef.current = null;
-                            setFindingFormFor(null);
-                            setFindingFormError("");
-                            setFindingDraft(createEmptyFindingDraft());
-                          }}
-                          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Cancel
-                        </button>
-                        <button type="submit" className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-800">
-                          Save Finding
-                        </button>
-                      </div>
-                    </form>
-                  </div>
+                  <FindingForm
+                    title={existingFinding ? `Edit Finding ${existingFinding.id}` : "Record Finding"}
+                    context={`Linked to ${inspection.id} / ${item.id} / ${item.label}`}
+                    draft={findingDraft}
+                    onDraftChange={updateFindingDraft}
+                    onSave={(draft) => saveFinding(item.id, item.label, draft)}
+                    onCancel={() => {
+                      findingFormForRef.current = null;
+                      setFindingFormFor(null);
+                      setFindingFormError("");
+                      setFindingDraft(createEmptyFindingDraft());
+                    }}
+                    onCaptureGps={() => captureGps(item.id)}
+                    gpsLoading={gpsLoadingFor === item.id}
+                    gpsError={gpsErrorFor === item.id ? gpsError : ""}
+                    evidenceError={evidenceError}
+                    formError={findingFormError}
+                    onAddEvidence={addEvidence}
+                    onRemoveEvidence={(localId) => {
+                      setFindingDraft((current) => ({
+                        ...current,
+                        evidence: current.evidence.filter((evidence) => evidence.localId !== localId),
+                      }));
+                      setEvidenceError("");
+                    }}
+                  />
                 ) : null}
 
                 <label className="mt-4 block">

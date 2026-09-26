@@ -1,5 +1,77 @@
 import { loadDemoState, saveDemoState } from "@/lib/demo-data";
+import type { FindingDraft, Inspection } from "@/lib/inspection-data";
 import type { CompletedInspectionRecord, InternalInspectionFinding } from "@/lib/inspection-data";
+import { getNextManualFindingCode } from "@/lib/manual-finding-id";
+
+function hasValidGps(gps: FindingDraft["gps"]): gps is NonNullable<FindingDraft["gps"]> {
+  return Boolean(
+    gps &&
+      Number.isFinite(gps.latitude) &&
+      Number.isFinite(gps.longitude) &&
+      gps.latitude >= -90 &&
+      gps.latitude <= 90 &&
+      gps.longitude >= -180 &&
+      gps.longitude <= 180,
+  );
+}
+
+export function saveManualFinding(
+  draft: FindingDraft,
+  relatedInspection?: Inspection,
+) {
+  const state = loadDemoState();
+  const existingFindings = state.internalInspectionFindings ?? [];
+  const findingCode = getNextManualFindingCode(state);
+
+  const now = new Date().toISOString();
+  const gps = hasValidGps(draft.gps) ? draft.gps : null;
+  const finding: InternalInspectionFinding = {
+    id: `internal-${findingCode}`,
+    findingCode,
+    source: "INTERNAL_INSPECTION",
+    ...(relatedInspection ? {
+      sourceInspectionId: relatedInspection.id,
+      relatedInspectionType: relatedInspection.type,
+      relatedInspector: relatedInspection.inspector,
+      relatedInspectionArea: relatedInspection.area,
+    } : {}),
+    sourceFindingId: findingCode,
+    title: draft.description.trim().slice(0, 120),
+    description: draft.description.trim(),
+    category: draft.category,
+    severity: draft.severity.toUpperCase() as InternalInspectionFinding["severity"],
+    status: "FINDING",
+    locationName: draft.area.trim() || relatedInspection?.area || "",
+    ...(gps ? { latitude: gps.latitude, longitude: gps.longitude, capturedAt: gps.capturedAt } : {}),
+    gps,
+    evidence: draft.evidence.map((item) => ({
+      localId: item.localId,
+      fileName: item.fileName,
+      fileType: item.fileType,
+      fileSize: item.fileSize,
+    })),
+    inspectorRemarks: draft.remarks.trim(),
+    createdAt: now,
+    updatedAt: now,
+  };
+  const historyEntry = {
+    id: `history-${finding.id}`,
+    findingId: finding.id,
+    userId: "inspection-demo-user",
+    action: "Manual Internal Inspection Finding recorded",
+    previousStatus: "",
+    newStatus: "FINDING",
+    remarks: relatedInspection ? `Related inspection: ${relatedInspection.id}` : "No related inspection",
+    createdAt: now,
+  };
+
+  saveDemoState({
+    ...state,
+    internalInspectionFindings: [...existingFindings, finding],
+    issueHistory: [...state.issueHistory, historyEntry],
+  });
+  return finding;
+}
 
 export function completeInspectionAndTransfer(record: CompletedInspectionRecord) {
   const state = loadDemoState();

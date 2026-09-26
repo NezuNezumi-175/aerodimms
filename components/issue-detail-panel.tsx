@@ -38,7 +38,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
       ?? state.internalInspectionFindings?.find((item) => item.findingCode === findingCode || item.id === findingCode)
       ?? null;
   }, [findingCode, state]);
-  const internalFinding = finding && "sourceInspectionId" in finding
+  const internalFinding = finding && "sourceFindingId" in finding
     ? finding as InternalInspectionFinding
     : null;
 
@@ -49,7 +49,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
 
   const evidenceItems = useMemo<IssueEvidenceDisplay[]>(() => {
     if (!state || !finding) return [];
-    if ("sourceInspectionId" in finding) {
+    if ("sourceFindingId" in finding) {
       return finding.evidence.map((item) => ({
         id: item.localId,
         fileName: item.fileName,
@@ -69,7 +69,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   }, [finding, state]);
 
   const updateFindingStatus = (nextStatus: string, action: string, remarks?: string) => {
-    if (!state || !finding || "sourceInspectionId" in finding) return;
+    if (!state || !finding || "sourceFindingId" in finding) return;
 
     const nextFinding: Finding = {
       ...finding,
@@ -99,7 +99,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   };
 
   const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!state || !finding || "sourceInspectionId" in finding) return;
+    if (!state || !finding || "sourceFindingId" in finding) return;
 
     const file = event.target.files?.[0];
     if (!file) return;
@@ -205,17 +205,22 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Internal Inspection</p>
               <h3 className="mt-1 font-semibold text-slate-900">Source Inspection</h3>
             </div>
-            <Link
-              href={`/inspections/${internalFinding.sourceInspectionId}`}
-              className="w-fit rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-50"
-            >
-              View Inspection
-            </Link>
+            {internalFinding.sourceInspectionId ? (
+              <Link
+                href={`/inspections/${internalFinding.sourceInspectionId}`}
+                className="w-fit rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-50"
+              >
+                View Inspection
+              </Link>
+            ) : null}
           </div>
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-            <div><dt className="text-xs text-slate-500">Inspection ID</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.sourceInspectionId}</dd></div>
+            <div><dt className="text-xs text-slate-500">Inspection ID</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.sourceInspectionId ?? "No related inspection"}</dd></div>
             <div><dt className="text-xs text-slate-500">Original Finding ID</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.sourceFindingId}</dd></div>
-            <div><dt className="text-xs text-slate-500">Checklist Item</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.checklistItemTitle} ({internalFinding.checklistItemId})</dd></div>
+            {internalFinding.relatedInspectionType ? <div><dt className="text-xs text-slate-500">Inspection Type</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.relatedInspectionType}</dd></div> : null}
+            {internalFinding.relatedInspector ? <div><dt className="text-xs text-slate-500">Inspector</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.relatedInspector}</dd></div> : null}
+            {internalFinding.relatedInspectionArea ? <div><dt className="text-xs text-slate-500">Inspection Area</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.relatedInspectionArea}</dd></div> : null}
+            {internalFinding.checklistItemId ? <div><dt className="text-xs text-slate-500">Checklist Item</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.checklistItemTitle} ({internalFinding.checklistItemId})</dd></div> : null}
             <div><dt className="text-xs text-slate-500">Category</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.category}</dd></div>
             <div className="sm:col-span-2"><dt className="text-xs text-slate-500">Inspector Remarks</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.inspectorRemarks || "None"}</dd></div>
           </dl>

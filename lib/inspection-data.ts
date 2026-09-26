@@ -24,6 +24,35 @@ export type ChecklistItem = {
 
 export type ChecklistResult = "Pass" | "Fail" | "N/A";
 
+export type FindingCategory =
+  | "Pavement / Surface"
+  | "FOD"
+  | "Lighting / AGL"
+  | "Markings"
+  | "Drainage"
+  | "Wildlife Hazard"
+  | "Facility / Infrastructure"
+  | "Other";
+export type FindingSeverity = "Low" | "Medium" | "High" | "Critical";
+export type GpsLocation = { latitude: number; longitude: number; capturedAt: string };
+export type EvidenceAttachment = {
+  localId: string;
+  file: File;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  previewUrl: string;
+};
+export type FindingDraft = {
+  description: string;
+  category: FindingCategory | "";
+  severity: FindingSeverity | "";
+  area: string;
+  remarks: string;
+  gps: GpsLocation | null;
+  evidence: EvidenceAttachment[];
+};
+
 export type InspectionEvidenceSnapshot = {
   localId: string;
   fileName: string;
@@ -65,10 +94,13 @@ export type InternalInspectionFinding = {
   id: string;
   findingCode: string;
   source: "INTERNAL_INSPECTION";
-  sourceInspectionId: string;
+  sourceInspectionId?: string;
   sourceFindingId: string;
-  checklistItemId: string;
-  checklistItemTitle: string;
+  checklistItemId?: string;
+  checklistItemTitle?: string;
+  relatedInspectionType?: InspectionType;
+  relatedInspector?: string;
+  relatedInspectionArea?: string;
   title: string;
   description: string;
   category: string;
