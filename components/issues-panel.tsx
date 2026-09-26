@@ -5,14 +5,56 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { loadDemoState, type DemoState } from "@/lib/demo-data";
 
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="min-w-0">
+      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </label>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option.replaceAll("_", " ")}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export function IssuesPanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [state, setState] = useState<DemoState | null>(null);
 
   useEffect(() => {
-    setState(loadDemoState());
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setState(loadDemoState());
+    });
+    return () => {
+      active = false;
+    };
   }, []);
+
+  const allFindings = useMemo(() => {
+    if (!state) return [];
+    return [...state.findings, ...(state.internalInspectionFindings ?? [])];
+  }, [state]);
 
   const updateQuery = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -36,7 +78,7 @@ export function IssuesPanel() {
     const location = searchParams.get("location") ?? "ALL";
     const assignee = searchParams.get("assignee") ?? "ALL";
 
-    return state.findings.filter((finding) => {
+    return allFindings.filter((finding) => {
       const matchesStatus =
         status === "ALL"
           ? true
@@ -75,7 +117,7 @@ export function IssuesPanel() {
         matchesAssignee
       );
     });
-  }, [searchParams, state]);
+  }, [allFindings, searchParams, state]);
 
   const statusOptions = [
     "ALL",
@@ -108,7 +150,7 @@ export function IssuesPanel() {
         "ALL",
         ...Array.from(
           new Set(
-            state.findings.map(
+            allFindings.map(
               (finding) => finding.locationName,
             ),
           ),
@@ -121,7 +163,7 @@ export function IssuesPanel() {
         "ALL",
         ...Array.from(
           new Set(
-            state.findings.map(
+            allFindings.map(
               (finding) => finding.assignedTeam ?? "Unassigned",
             ),
           ),
@@ -148,20 +190,20 @@ export function IssuesPanel() {
     ];
 
     return {
-      total: state.findings.length,
-      open: state.findings.filter((finding) =>
+      total: allFindings.length,
+      open: allFindings.filter((finding) =>
         openStatuses.includes(finding.status),
       ).length,
-      critical: state.findings.filter(
+      critical: allFindings.filter(
         (finding) => finding.severity === "CRITICAL",
       ).length,
-      overdue: state.findings.filter((finding) =>
+      overdue: allFindings.filter((finding) =>
         ["ASSIGNED", "WORK_ORDER", "IN_PROGRESS", "PENDING_VERIFICATION"].includes(
           finding.status,
         ),
       ).length,
     };
-  }, [state]);
+  }, [allFindings, state]);
 
   if (!state) {
     return (
@@ -200,38 +242,6 @@ export function IssuesPanel() {
       "bg-emerald-50 text-emerald-700 ring-emerald-200",
   };
 
-  const FilterSelect = ({
-    label,
-    value,
-    options,
-    queryKey,
-  }: {
-    label: string;
-    value: string;
-    options: string[];
-    queryKey: string;
-  }) => (
-    <div className="min-w-0">
-      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-        {label}
-      </label>
-
-      <select
-        value={value}
-        onChange={(event) =>
-          updateQuery(queryKey, event.target.value)
-        }
-        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option.replaceAll("_", " ")}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -257,7 +267,7 @@ export function IssuesPanel() {
           </span>{" "}
           <span className="text-slate-400">of</span>{" "}
           <span className="font-semibold text-slate-900">
-            {state.findings.length}
+            {allFindings.length}
           </span>{" "}
           <span className="text-slate-500">issues</span>
         </div>
@@ -340,35 +350,35 @@ export function IssuesPanel() {
             label="Status"
             value={searchParams.get("status") ?? "ALL"}
             options={statusOptions}
-            queryKey="status"
+            onChange={(value) => updateQuery("status", value)}
           />
 
           <FilterSelect
             label="Severity"
             value={searchParams.get("severity") ?? "ALL"}
             options={severityOptions}
-            queryKey="severity"
+            onChange={(value) => updateQuery("severity", value)}
           />
 
           <FilterSelect
             label="Source"
             value={searchParams.get("source") ?? "ALL"}
             options={sourceOptions}
-            queryKey="source"
+            onChange={(value) => updateQuery("source", value)}
           />
 
           <FilterSelect
             label="Location"
             value={searchParams.get("location") ?? "ALL"}
             options={locationOptions}
-            queryKey="location"
+            onChange={(value) => updateQuery("location", value)}
           />
 
           <FilterSelect
             label="Assignee"
             value={searchParams.get("assignee") ?? "ALL"}
             options={assigneeOptions}
-            queryKey="assignee"
+            onChange={(value) => updateQuery("assignee", value)}
           />
         </div>
       </section>
@@ -423,9 +433,14 @@ export function IssuesPanel() {
                   </td>
 
                   <td className="px-5 py-4">
-                    <span className="text-xs font-medium text-slate-500">
-                      {finding.source.replaceAll("_", " ")}
+                    <span className={`text-xs font-medium ${
+                      finding.source === "INTERNAL_INSPECTION" ? "text-sky-700" : "text-slate-500"
+                    }`}>
+                      {finding.source === "INTERNAL_INSPECTION" ? "Internal Inspection" : "Regulatory"}
                     </span>
+                    {"sourceInspectionId" in finding ? (
+                      <span className="mt-1 block text-[10px] text-slate-400">{finding.sourceInspectionId}</span>
+                    ) : null}
                   </td>
 
                   <td className="px-5 py-4">
