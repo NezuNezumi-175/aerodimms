@@ -4,18 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { getStoredUser, saveDemoState, type DemoState, type Finding, type IssueHistoryEntry } from "@/lib/demo-data";
 import { createClient } from "@/lib/supabase/client";
 import { isDemoMode, loadAppState } from "@/lib/app-data";
+import Image from "next/image";
+import Link from "next/link";
+import type { InternalInspectionFinding } from "@/lib/inspection-data";
 
 type IssueDetailPanelProps = {
   findingCode: string;
 };
 
-const statusTransitions: Record<string, string[]> = {
-  FINDING: ["ASSIGNED"],
-  ASSIGNED: ["WORK_ORDER"],
-  WORK_ORDER: ["IN_PROGRESS"],
-  IN_PROGRESS: ["PENDING_VERIFICATION"],
-  PENDING_VERIFICATION: ["CLOSED", "IN_PROGRESS"],
-  CLOSED: [],
+type IssueEvidenceDisplay = {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize?: number;
+  previewUrl?: string;
 };
 
 export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
@@ -31,16 +33,30 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
 
   const finding = useMemo(() => {
     if (!state) return null;
-    return state.findings.find((item) => item.findingCode === findingCode || item.id === findingCode) ?? null;
+    return state.findings.find((item) => item.findingCode === findingCode || item.id === findingCode)
+      ?? state.internalInspectionFindings?.find((item) => item.findingCode === findingCode || item.id === findingCode)
+      ?? null;
   }, [findingCode, state]);
+  const internalFinding = finding && "sourceFindingId" in finding
+    ? finding as InternalInspectionFinding
+    : null;
 
   const workOrder = useMemo(() => {
     if (!state || !finding) return null;
     return state.workOrders.find((item) => item.findingId === finding.id) ?? null;
   }, [finding, state]);
 
-  const evidenceItems = useMemo(() => {
+  const evidenceItems = useMemo<IssueEvidenceDisplay[]>(() => {
     if (!state || !finding) return [];
+    if ("sourceFindingId" in finding) {
+      return finding.evidence.map((item) => ({
+        id: item.localId,
+        fileName: item.fileName,
+        mimeType: item.fileType,
+        fileSize: item.fileSize,
+        previewUrl: item.previewUrl,
+      }));
+    }
     return state.evidence.filter((item) => item.findingId === finding.id);
   }, [finding, state]);
 
@@ -153,6 +169,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   }
 
   const primaryAction = (() => {
+    if (internalFinding) return null;
     switch (finding.status) {
       case "FINDING":
         return { label: "Assign", nextStatus: "ASSIGNED", action: "Finding assigned" };
@@ -170,6 +187,14 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
         return null;
     }
   })();
+  const coordinates = internalFinding?.gps
+    ? `${internalFinding.gps.latitude.toFixed(5)}, ${internalFinding.gps.longitude.toFixed(5)}`
+    : finding.latitude !== undefined && finding.longitude !== undefined
+      ? `${finding.latitude.toFixed(5)}, ${finding.longitude.toFixed(5)}`
+      : "Not captured";
+
+  const formatEvidenceSize = (size: number) =>
+    size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KB` : `${(size / (1024 * 1024)).toFixed(1)} MB`;
 
   return (
     <div className="space-y-6">
@@ -185,7 +210,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
 
         <div className="mt-6 grid gap-5 md:grid-cols-2">
           <div className="space-y-3 text-sm text-slate-600">
-            <p><span className="font-semibold text-slate-800">Source:</span> {finding.source}</p>
+            <p><span className="font-semibold text-slate-800">Source:</span> {finding.source === "INTERNAL_INSPECTION" ? "Internal Inspection" : "Regulatory"}</p>
             <p><span className="font-semibold text-slate-800">Severity:</span> {finding.severity}</p>
             <p><span className="font-semibold text-slate-800">Location:</span> {finding.locationName}</p>
             <p><span className="font-semibold text-slate-800">Created:</span> {new Date(finding.createdAt).toLocaleDateString()}</p>
@@ -193,11 +218,41 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
           <div className="space-y-3 text-sm text-slate-600">
             <p><span className="font-semibold text-slate-800">Current Status:</span> {finding.status}</p>
             <p><span className="font-semibold text-slate-800">Assigned Team:</span> {finding.assignedTeam ?? "Unassigned"}</p>
-            <p><span className="font-semibold text-slate-800">GPS Location:</span> {finding.latitude.toFixed(5)}, {finding.longitude.toFixed(5)}</p>
+            <p><span className="font-semibold text-slate-800">GPS Location:</span> {coordinates}</p>
+            {internalFinding?.gps ? <p><span className="font-semibold text-slate-800">GPS Captured:</span> {new Date(internalFinding.gps.capturedAt).toLocaleString()}</p> : null}
             <p><span className="font-semibold text-slate-800">Target Completion:</span> {finding.targetCompletionDate ?? "Not set"}</p>
           </div>
         </div>
       </div>
+
+      {internalFinding ? (
+        <section className="rounded-2xl border border-sky-100 bg-sky-50/50 p-5 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Internal Inspection</p>
+              <h3 className="mt-1 font-semibold text-slate-900">Source Inspection</h3>
+            </div>
+            {internalFinding.sourceInspectionId ? (
+              <Link
+                href={`/inspections/${internalFinding.sourceInspectionId}`}
+                className="w-fit rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-50"
+              >
+                View Inspection
+              </Link>
+            ) : null}
+          </div>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <div><dt className="text-xs text-slate-500">Inspection ID</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.sourceInspectionId ?? "No related inspection"}</dd></div>
+            <div><dt className="text-xs text-slate-500">Original Finding ID</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.sourceFindingId}</dd></div>
+            {internalFinding.relatedInspectionType ? <div><dt className="text-xs text-slate-500">Inspection Type</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.relatedInspectionType}</dd></div> : null}
+            {internalFinding.relatedInspector ? <div><dt className="text-xs text-slate-500">Inspector</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.relatedInspector}</dd></div> : null}
+            {internalFinding.relatedInspectionArea ? <div><dt className="text-xs text-slate-500">Inspection Area</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.relatedInspectionArea}</dd></div> : null}
+            {internalFinding.checklistItemId ? <div><dt className="text-xs text-slate-500">Checklist Item</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.checklistItemTitle} ({internalFinding.checklistItemId})</dd></div> : null}
+            <div><dt className="text-xs text-slate-500">Category</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.category}</dd></div>
+            <div className="sm:col-span-2"><dt className="text-xs text-slate-500">Inspector Remarks</dt><dd className="mt-1 font-medium text-slate-800">{internalFinding.inspectorRemarks || "None"}</dd></div>
+          </dl>
+        </section>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -214,7 +269,11 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
               <p>No work order created yet.</p>
             )}
 
-            {primaryAction ? (
+            {internalFinding ? (
+              <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">
+                Stage 1: Finding. No work order was created automatically.
+              </p>
+            ) : primaryAction ? (
               <button
                 type="button"
                 onClick={() => updateFindingStatus(primaryAction.nextStatus, primaryAction.action, primaryAction.action)}
@@ -257,8 +316,16 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
           <div className="mt-4 space-y-3">
             {evidenceItems.length ? (
               evidenceItems.map((item) => (
-                <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                  {item.fileName}
+                <div key={item.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700">
+                  {item.previewUrl ? (
+                    <Image src={item.previewUrl} alt={`Preview of ${item.fileName}`} width={64} height={64} unoptimized className="h-16 w-16 shrink-0 rounded-md object-cover" />
+                  ) : null}
+                  <div className="min-w-0">
+                    <p className="break-all font-medium">{item.fileName}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {item.mimeType}{item.fileSize !== undefined ? ` · ${formatEvidenceSize(item.fileSize)}` : ""}
+                    </p>
+                  </div>
                 </div>
               ))
             ) : (

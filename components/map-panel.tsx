@@ -37,6 +37,40 @@ export function MapPanel() {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [selectedStand, setSelectedStand] = useState<AirportStand | null>(null);
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
+  const mapFindings = useMemo(() => {
+    if (!state) return [];
+
+    const manualFindings: Finding[] = (state.internalInspectionFindings ?? [])
+      .filter((item) => {
+        const gps = item.gps;
+        return Boolean(
+          !item.checklistItemId &&
+            gps &&
+            Number.isFinite(gps.latitude) &&
+            Number.isFinite(gps.longitude) &&
+            gps.latitude >= -90 &&
+            gps.latitude <= 90 &&
+            gps.longitude >= -180 &&
+            gps.longitude <= 180,
+        );
+      })
+      .map((item) => ({
+        id: item.id,
+        findingCode: item.findingCode,
+        source: item.source,
+        title: item.title,
+        description: item.description,
+        severity: item.severity,
+        status: item.status,
+        locationName: item.locationName,
+        latitude: item.gps!.latitude,
+        longitude: item.gps!.longitude,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      }));
+
+    return [...state.findings, ...manualFindings];
+  }, [state]);
 
   useEffect(() => {
     loadAppState().then(setState).catch(() => setState(null));
@@ -112,7 +146,7 @@ export function MapPanel() {
       element.title = `${feature.properties.name ?? "Spot"} · ${feature.properties.apron ?? "Fukuoka Airport"}`;
       const [longitude, latitude] = feature.geometry.coordinates;
       const code = feature.properties.name ?? "Spot";
-      const openFindings = state.findings.filter(
+      const openFindings = mapFindings.filter(
         (finding) => finding.airportStandCode === code && openFindingStatuses.has(finding.status),
       );
       element.addEventListener("click", () => {
@@ -127,7 +161,7 @@ export function MapPanel() {
     });
 
     return () => markers.forEach((marker) => marker.remove());
-  }, [airportData, showAirport, state]);
+  }, [airportData, mapFindings, showAirport, state]);
 
   useEffect(() => {
     if (!mapRef.current || !state) return;
@@ -173,7 +207,7 @@ export function MapPanel() {
     }
 
     if (showFindings) {
-      state.findings
+      mapFindings
         .filter((finding) => openFindingStatuses.has(finding.status))
         .forEach((finding) => {
           const severityColor = finding.severity === "CRITICAL" ? severityColors.CRITICAL : "#2563eb";
@@ -209,16 +243,16 @@ export function MapPanel() {
     return () => {
       markers.forEach((marker) => marker.remove());
     };
-  }, [state, showAssets, showFindings]);
+  }, [mapFindings, state, showAssets, showFindings]);
 
   const searchableRecords = useMemo(() => {
     if (!state) return [] as Array<{ value: string; type: "asset" | "finding"; item: Asset | Finding }>;
 
     return [
       ...state.assets.map((asset) => ({ value: asset.assetCode.toLowerCase(), type: "asset" as const, item: asset })),
-      ...state.findings.map((finding) => ({ value: finding.findingCode.toLowerCase(), type: "finding" as const, item: finding })),
+      ...mapFindings.map((finding) => ({ value: finding.findingCode.toLowerCase(), type: "finding" as const, item: finding })),
     ];
-  }, [state]);
+  }, [mapFindings, state]);
 
   const handleSearch = () => {
     if (!state || !mapRef.current) return;

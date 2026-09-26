@@ -60,43 +60,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/inspections", label: "Inspections" },
     { href: "/map", label: "Map" },
     { href: "/issues", label: "Issues" },
   ];
 
   return (
     <div className="h-screen overflow-hidden bg-slate-100 text-slate-900">
-      <div className="flex h-full flex-col md:flex-row">
-        <aside className="shrink-0 border-b border-slate-200 bg-slate-900 text-slate-50 md:h-screen md:w-64 md:overflow-y-auto md:border-b-0 md:border-r">
-          <div className="flex items-center justify-between px-5 py-5">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">AeroDIMMS</p>
-              <h1 className="mt-1 text-xl font-semibold">Fukuoka Airport</h1>
+      <div className="flex h-full flex-col">
+        <div className="z-20 shrink-0 border-b border-slate-700 bg-slate-900 text-slate-50 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-3 sm:px-6 lg:flex-nowrap">
+            <div className="shrink-0">
+              <p className="text-[10px] uppercase tracking-[0.25em] text-slate-400">AeroDIMMS</p>
+              <h1 className="mt-0.5 text-lg font-semibold">Fukuoka Airport</h1>
             </div>
-            <div className="flex items-center gap-2 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
+
+            <nav className="order-3 flex w-full items-center gap-1 overflow-x-auto lg:order-none lg:w-auto">
+              {navItems.map((item) => {
+                const active = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                      active ? "bg-sky-500 text-white shadow-sm" : "text-slate-200 hover:bg-slate-800"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="ml-auto flex shrink-0 items-center gap-2 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
               Online
             </div>
           </div>
-
-          <nav className="space-y-2 px-3 pb-4">
-            {navItems.map((item) => {
-              const active = pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center justify-between rounded-xl px-3 py-3 text-sm font-medium transition ${
-                    active ? "bg-sky-500 text-white shadow-sm" : "text-slate-200 hover:bg-slate-800"
-                  }`}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-xs opacity-70">→</span>
-                </Link>
-              );
-            })}
-          </nav>
-        </aside>
+        </div>
 
         <div className="flex min-h-0 flex-1 flex-col">
           <header className="z-10 flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 py-4 shadow-sm">

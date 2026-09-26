@@ -1,0 +1,608 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { CompletedInspectionView } from "@/components/completed-inspection-view";
+import { FindingForm } from "@/components/finding-form";
+import {
+  allInspections,
+  checklistByInspectionType,
+  type CompletedInspectionFinding,
+  type CompletedInspectionRecord,
+  type EvidenceAttachment,
+  type FindingDraft,
+  type FindingCategory,
+  type FindingSeverity,
+  type GpsLocation,
+  type InspectionStatus,
+} from "@/lib/inspection-data";
+import { loadDemoState } from "@/lib/demo-data";
+import { createFindingEvidence, requestFindingGps } from "@/lib/finding-form";
+import { completeInspectionAndTransfer } from "@/lib/inspection-workflow";
+
+type ChecklistResult = "Pass" | "Fail" | "N/A";
+type ChecklistAnswer = { result?: ChecklistResult; remark: string };
+type LocalFinding = {
+  id: string;
+  inspectionId: string;
+  checklistItemId: string;
+  checklistItemTitle: string;
+  description: string;
+  category: FindingCategory;
+  severity: FindingSeverity;
+  area: string;
+  remarks: string;
+  gps: GpsLocation | null;
+  evidence: EvidenceAttachment[];
+  createdAt: string;
+};
+
+const statusStyles: Record<InspectionStatus, string> = {
+  Scheduled: "bg-slate-100 text-slate-700",
+  "In Progress": "bg-sky-100 text-sky-800",
+  Completed: "bg-emerald-100 text-emerald-800",
+};
+
+const resultOptions: ChecklistResult[] = ["Pass", "Fail", "N/A"];
+function createEmptyFindingDraft(area = ""): FindingDraft {
+  return { description: "", category: "", severity: "", area, remarks: "", gps: null, evidence: [] };
+}
+
+function resultButtonClass(result: ChecklistResult, selected: boolean) {
+  if (!selected) return "border-slate-200 bg-white text-slate-600 hover:bg-slate-50";
+  if (result === "Pass") return "border-emerald-600 bg-emerald-600 text-white";
+  if (result === "Fail") return "border-red-600 bg-red-600 text-white";
+  return "border-slate-600 bg-slate-600 text-white";
+}
+
+export function InspectionExecutionPanel({ inspectionId }: { inspectionId: string }) {
+  const inspection = allInspections.find((item) => item.id === inspectionId);
+  const [answers, setAnswers] = useState<Record<string, ChecklistAnswer>>({});
+  const [findings, setFindings] = useState<LocalFinding[]>([]);
+  const [findingFormFor, setFindingFormFor] = useState<string | null>(null);
+  const [findingDraft, setFindingDraft] = useState<FindingDraft>(() => createEmptyFindingDraft());
+  const [findingFormError, setFindingFormError] = useState("");
+  const [gpsLoadingFor, setGpsLoadingFor] = useState<string | null>(null);
+  const [gpsErrorFor, setGpsErrorFor] = useState<string | null>(null);
+  const [gpsError, setGpsError] = useState("");
+  const [evidenceError, setEvidenceError] = useState("");
+  const [saveNotice, setSaveNotice] = useState(false);
+  const [completionLoadedFor, setCompletionLoadedFor] = useState<string | null>(null);
+  const [completedRecord, setCompletedRecord] = useState<CompletedInspectionRecord | null>(null);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [completionError, setCompletionError] = useState("");
+  const [transferredCount, setTransferredCount] = useState(0);
+  const objectUrlsRef = useRef<Set<string>>(new Set());
+  const findingFormForRef = useRef<string | null>(null);
+  const preservePreviewUrlsOnUnmountRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      try {
+        const demoState = loadDemoState();
+        const record = demoState.completedInspectionRecords?.find(
+          (item) => item.inspection.id === inspectionId,
+        ) ?? null;
+        setCompletedRecord(record);
+        setTransferredCount(
+          (demoState.internalInspectionFindings ?? []).filter(
+            (finding) => finding.sourceInspectionId === inspectionId,
+          ).length,
+        );
+      } catch {
+        setCompletedRecord(null);
+      }
+      setCompletionLoadedFor(inspectionId);
+    });
+    return () => {
+      active = false;
+    };
+  }, [inspectionId]);
+
+  useEffect(() => {
+    const retainedUrls = new Set<string>();
+    findings.forEach((finding) => finding.evidence.forEach((item) => retainedUrls.add(item.previewUrl)));
+    findingDraft.evidence.forEach((item) => retainedUrls.add(item.previewUrl));
+
+    objectUrlsRef.current.forEach((previewUrl) => {
+      if (!retainedUrls.has(previewUrl)) {
+        URL.revokeObjectURL(previewUrl);
+        objectUrlsRef.current.delete(previewUrl);
+      }
+    });
+  }, [findings, findingDraft.evidence]);
+
+  useEffect(
+    () => () => {
+      if (preservePreviewUrlsOnUnmountRef.current) return;
+      objectUrlsRef.current.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+      objectUrlsRef.current.clear();
+    },
+    [],
+  );
+
+  if (!inspection) {
+    return (
+      <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h1 className="text-xl font-semibold text-slate-900">Inspection not found</h1>
+        <p className="mt-2 text-sm text-slate-600">No mock inspection matches ID {inspectionId}.</p>
+        <Link href="/inspections" className="mt-5 inline-flex rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700">
+          Back to Inspections
+        </Link>
+      </div>
+    );
+  }
+
+  if (completionLoadedFor !== inspectionId) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspection status…</div>;
+  }
+
+  if (completedRecord) {
+    return <CompletedInspectionView record={completedRecord} transferredCount={transferredCount} />;
+  }
+
+  const checklist = checklistByInspectionType[inspection.type];
+  const answeredCount = checklist.filter((item) => answers[item.id]?.result).length;
+  const allAnswered = answeredCount === checklist.length;
+  const progressPercent = Math.round((answeredCount / checklist.length) * 100);
+  const getFinding = (checklistItemId: string) =>
+    findings.find(
+      (finding) =>
+        finding.inspectionId === inspection.id && finding.checklistItemId === checklistItemId,
+    );
+  const failedItemsHaveFindings = checklist.every(
+    (item) => answers[item.id]?.result !== "Fail" || Boolean(getFinding(item.id)),
+  );
+  const readyToComplete = allAnswered && failedItemsHaveFindings;
+  const passCount = checklist.filter((item) => answers[item.id]?.result === "Pass").length;
+  const failCount = checklist.filter((item) => answers[item.id]?.result === "Fail").length;
+  const notApplicableCount = checklist.filter((item) => answers[item.id]?.result === "N/A").length;
+
+  const updateAnswer = (itemId: string, update: Partial<ChecklistAnswer>) => {
+    setAnswers((current) => {
+      const previous = current[itemId] ?? { remark: "" };
+      return { ...current, [itemId]: { ...previous, ...update } };
+    });
+    setSaveNotice(false);
+  };
+
+  const updateFindingDraft = (update: Partial<FindingDraft>) => {
+    setFindingDraft((current) => ({ ...current, ...update }));
+    setFindingFormError("");
+  };
+
+  const openFindingForm = (checklistItemId: string) => {
+    const existingFinding = getFinding(checklistItemId);
+    setFindingDraft(
+      existingFinding
+        ? {
+            description: existingFinding.description,
+            category: existingFinding.category,
+            severity: existingFinding.severity,
+            area: existingFinding.area,
+            remarks: existingFinding.remarks,
+            gps: existingFinding.gps,
+            evidence: existingFinding.evidence,
+          }
+        : createEmptyFindingDraft(inspection.area),
+    );
+    setFindingFormError("");
+    setGpsError("");
+    setGpsErrorFor(null);
+    setEvidenceError("");
+    findingFormForRef.current = checklistItemId;
+    setFindingFormFor(checklistItemId);
+  };
+
+  const saveFinding = (checklistItemId: string, checklistItemTitle: string, draft: FindingDraft) => {
+    const description = draft.description.trim();
+
+    if (!description || !draft.category || !draft.severity) {
+      setFindingFormError("Enter a description, category, and severity before saving.");
+      return;
+    }
+
+    const existingFinding = getFinding(checklistItemId);
+    const finding: LocalFinding = {
+      id: existingFinding?.id ?? `F-${String(findings.length + 1).padStart(3, "0")}`,
+      inspectionId: inspection.id,
+      checklistItemId,
+      checklistItemTitle,
+      description,
+      category: draft.category,
+      severity: draft.severity,
+      area: draft.area.trim() || inspection.area,
+      remarks: draft.remarks.trim(),
+      gps: draft.gps,
+      evidence: draft.evidence,
+      createdAt: existingFinding?.createdAt ?? new Date().toISOString(),
+    };
+
+    setFindings((current) => {
+      const existingIndex = current.findIndex(
+        (item) => item.inspectionId === inspection.id && item.checklistItemId === checklistItemId,
+      );
+      if (existingIndex < 0) return [...current, finding];
+      return current.map((item, index) => (index === existingIndex ? finding : item));
+    });
+    findingFormForRef.current = null;
+    setFindingFormFor(null);
+    setFindingFormError("");
+    setFindingDraft(createEmptyFindingDraft());
+  };
+
+  const confirmCompletion = () => {
+    if (!readyToComplete || findingFormFor !== null || isCompleting) return;
+
+    setIsCompleting(true);
+    setCompletionError("");
+    const completedAt = new Date().toISOString();
+    const completedChecklist = checklist.flatMap((item) => {
+      const answer = answers[item.id];
+      return answer?.result
+        ? [{
+            checklistItemId: item.id,
+            checklistItemTitle: item.label,
+            result: answer.result,
+            remark: answer.remark,
+          }]
+        : [];
+    });
+    if (completedChecklist.length !== checklist.length) {
+      setIsCompleting(false);
+      return;
+    }
+
+    const completedFindings: CompletedInspectionFinding[] = findings
+      .filter((finding) => finding.inspectionId === inspection.id)
+      .map((finding) => ({
+        id: finding.id,
+        inspectionId: finding.inspectionId,
+        checklistItemId: finding.checklistItemId,
+        checklistItemTitle: finding.checklistItemTitle,
+        description: finding.description,
+        category: finding.category,
+        severity: finding.severity,
+        area: finding.area,
+        remarks: finding.remarks,
+        createdAt: finding.createdAt,
+        gps: finding.gps,
+        evidence: finding.evidence.map((item) => ({
+          localId: item.localId,
+          fileName: item.fileName,
+          fileType: item.fileType,
+          fileSize: item.fileSize,
+          previewUrl: item.previewUrl,
+        })),
+      }));
+    const record: CompletedInspectionRecord = {
+      inspection: { ...inspection, status: "Completed" },
+      completedAt,
+      checklist: completedChecklist,
+      findings: completedFindings,
+    };
+
+    try {
+      const result = completeInspectionAndTransfer(record);
+      preservePreviewUrlsOnUnmountRef.current = completedFindings.some(
+        (finding) => finding.evidence.some((item) => item.previewUrl),
+      );
+      setCompletedRecord(result.completedRecord);
+      setTransferredCount(result.transferredCount);
+      setConfirmationOpen(false);
+      setIsCompleting(false);
+      findingFormForRef.current = null;
+      setFindingFormFor(null);
+      setSaveNotice(false);
+    } catch {
+      setCompletionError("Unable to save this completion in the local demo store. Please try again.");
+      setIsCompleting(false);
+    }
+  };
+
+  const captureGps = (checklistItemId: string) => {
+    setGpsError("");
+    setGpsErrorFor(null);
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGpsErrorFor(checklistItemId);
+      setGpsError("Location unavailable. You can continue the inspection without GPS.");
+      return;
+    }
+
+    setGpsLoadingFor(checklistItemId);
+    requestFindingGps(
+      (gps) => {
+        if (findingFormForRef.current === checklistItemId) {
+          setFindingDraft((current) => ({ ...current, gps }));
+        } else if (findingFormForRef.current === null) {
+          setFindings((current) => current.map((finding) =>
+            finding.inspectionId === inspection.id && finding.checklistItemId === checklistItemId
+              ? { ...finding, gps }
+              : finding,
+          ));
+        }
+        setGpsLoadingFor(null);
+      },
+      () => {
+        setGpsError("Location unavailable. You can continue the inspection without GPS.");
+        setGpsErrorFor(checklistItemId);
+        setGpsLoadingFor(null);
+      },
+    );
+  };
+
+  const addEvidence = (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.currentTarget.files ?? []);
+    const { attachments, rejectedCount } = createFindingEvidence(
+      selectedFiles,
+      (previewUrl) => objectUrlsRef.current.add(previewUrl),
+    );
+
+    if (attachments.length) {
+      setFindingDraft((current) => ({ ...current, evidence: [...current.evidence, ...attachments] }));
+    }
+    setEvidenceError(
+      rejectedCount ? "Only JPG, PNG, and WebP images can be attached." : "",
+    );
+    event.currentTarget.value = "";
+  };
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Inspection execution</p>
+          <p className="mt-1 break-words text-sm font-semibold text-slate-600">{inspection.id}</p>
+        </div>
+        <Link
+          href="/inspections"
+          className="inline-flex w-fit rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+        >
+          Back to Inspections
+        </Link>
+      </div>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <h1 className="text-2xl font-bold text-slate-900">{inspection.type}</h1>
+          <span className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[inspection.status]}`}>
+            {inspection.status}
+          </span>
+        </div>
+        <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div>
+            <dt className="text-xs uppercase tracking-[0.12em] text-slate-500">Inspector</dt>
+            <dd className="mt-1 text-sm font-semibold text-slate-800">{inspection.inspector}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase tracking-[0.12em] text-slate-500">Area</dt>
+            <dd className="mt-1 text-sm font-semibold text-slate-800">{inspection.area}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase tracking-[0.12em] text-slate-500">Date</dt>
+            <dd className="mt-1 text-sm font-semibold text-slate-800">{inspection.date}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase tracking-[0.12em] text-slate-500">Status</dt>
+            <dd className="mt-1 text-sm font-semibold text-slate-800">{inspection.status}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="checklist-heading">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Field checklist</p>
+            <h2 id="checklist-heading" className="mt-1 text-xl font-semibold text-slate-900">Inspection Checklist</h2>
+          </div>
+          <p className="text-sm font-semibold text-slate-700">
+            {answeredCount} of {checklist.length} items completed ({progressPercent}%)
+          </p>
+        </div>
+        <div
+          className="mb-4 h-2 overflow-hidden rounded-full bg-slate-200"
+          role="progressbar"
+          aria-label="Checklist progress"
+          aria-valuemin={0}
+          aria-valuemax={checklist.length}
+          aria-valuenow={answeredCount}
+        >
+          <div className="h-full rounded-full bg-sky-600 transition-all" style={{ width: `${progressPercent}%` }} />
+        </div>
+
+        <div className="space-y-3">
+          {checklist.map((item, index) => {
+            const answer = answers[item.id];
+            const isFailed = answer?.result === "Fail";
+            const existingFinding = getFinding(item.id);
+            const isFindingFormOpen = findingFormFor === item.id;
+
+            return (
+              <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Item {index + 1}</p>
+                    <h3 className="mt-1 text-base font-semibold text-slate-900">{item.label}</h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">{item.guidance}</p>
+                  </div>
+                  <div role="group" aria-label={`Result for ${item.label}`} className="flex shrink-0 gap-2">
+                    {resultOptions.map((result) => {
+                      const selected = answer?.result === result;
+                      return (
+                        <button
+                          key={result}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => updateAnswer(item.id, { result })}
+                          className={`min-w-14 rounded-lg border px-3 py-2 text-sm font-semibold transition ${resultButtonClass(result, selected)}`}
+                        >
+                          {result}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {isFailed || existingFinding ? (
+                  <div className={`mt-4 flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${
+                    isFailed && !existingFinding ? "border-red-100 bg-red-50/70" : "border-emerald-100 bg-emerald-50/70"
+                  }`}>
+                    <p className={`text-sm font-medium ${
+                      isFailed && !existingFinding ? "text-red-800" : "text-emerald-800"
+                    }`}>
+                      {isFailed
+                        ? existingFinding
+                          ? `Fail - Finding recorded (${existingFinding.id})`
+                          : "Fail - Finding required"
+                        : `Finding ${existingFinding?.id} recorded and retained for this checklist item`}
+                    </p>
+                    {existingFinding?.gps ? (
+                      <span className="w-fit rounded-full bg-white px-2.5 py-1 text-xs font-medium text-sky-800">GPS captured</span>
+                    ) : null}
+                    {existingFinding?.evidence.length ? (
+                      <span className="w-fit rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700">
+                        {existingFinding.evidence.length} {existingFinding.evidence.length === 1 ? "evidence" : "evidence files"}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={gpsLoadingFor !== null}
+                      onClick={() => {
+                        if (isFindingFormOpen) {
+                          findingFormForRef.current = null;
+                          setFindingFormFor(null);
+                          setFindingFormError("");
+                          setFindingDraft(createEmptyFindingDraft());
+                        } else {
+                          openFindingForm(item.id);
+                        }
+                      }}
+                      className="w-fit shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isFindingFormOpen ? "Close Finding Form" : existingFinding ? "Edit Finding" : "Record Finding"}
+                    </button>
+                  </div>
+                ) : null}
+
+                {isFindingFormOpen ? (
+                  <FindingForm
+                    title={existingFinding ? `Edit Finding ${existingFinding.id}` : "Record Finding"}
+                    context={`Linked to ${inspection.id} / ${item.id} / ${item.label}`}
+                    draft={findingDraft}
+                    onDraftChange={updateFindingDraft}
+                    onSave={(draft) => saveFinding(item.id, item.label, draft)}
+                    onCancel={() => {
+                      findingFormForRef.current = null;
+                      setFindingFormFor(null);
+                      setFindingFormError("");
+                      setFindingDraft(createEmptyFindingDraft());
+                    }}
+                    onCaptureGps={() => captureGps(item.id)}
+                    gpsLoading={gpsLoadingFor === item.id}
+                    gpsError={gpsErrorFor === item.id ? gpsError : ""}
+                    evidenceError={evidenceError}
+                    formError={findingFormError}
+                    onAddEvidence={addEvidence}
+                    onRemoveEvidence={(localId) => {
+                      setFindingDraft((current) => ({
+                        ...current,
+                        evidence: current.evidence.filter((evidence) => evidence.localId !== localId),
+                      }));
+                      setEvidenceError("");
+                    }}
+                  />
+                ) : null}
+
+                <label className="mt-4 block">
+                  <span className="text-xs font-medium text-slate-600">Inspector remark (optional)</span>
+                  <textarea
+                    value={answer?.remark ?? ""}
+                    onChange={(event) => updateAnswer(item.id, { remark: event.target.value })}
+                    rows={2}
+                    className="mt-1.5 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-sky-400 focus:bg-white"
+                    placeholder="Add a short observation"
+                  />
+                </label>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section aria-label="Inspection actions" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        {saveNotice ? (
+          <p role="status" className="mb-4 text-sm font-medium text-emerald-700">
+            Inspection progress saved locally for this session.
+          </p>
+        ) : null}
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              setSaveNotice(true);
+            }}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Save &amp; Continue
+          </button>
+          <button
+            type="button"
+            disabled={!readyToComplete || findingFormFor !== null || isCompleting}
+            onClick={() => {
+              setCompletionError("");
+              setConfirmationOpen(true);
+              setSaveNotice(false);
+            }}
+            className="rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+          >
+            Complete Inspection
+          </button>
+        </div>
+      </section>
+
+      {confirmationOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="complete-inspection-heading"
+            className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6"
+          >
+            <h2 id="complete-inspection-heading" className="text-xl font-bold text-slate-900">Confirm Inspection Completion</h2>
+            <p className="mt-1 text-sm text-slate-600">Review this inspection summary before finalizing.</p>
+            <dl className="mt-5 grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 text-sm">
+              <div><dt className="text-xs text-slate-500">Inspection ID</dt><dd className="mt-1 font-semibold text-slate-800">{inspection.id}</dd></div>
+              <div><dt className="text-xs text-slate-500">Inspection Type</dt><dd className="mt-1 font-semibold text-slate-800">{inspection.type}</dd></div>
+              <div><dt className="text-xs text-slate-500">Checklist Items</dt><dd className="mt-1 font-semibold text-slate-800">{checklist.length}</dd></div>
+              <div><dt className="text-xs text-slate-500">Pass / Fail / N/A</dt><dd className="mt-1 font-semibold text-slate-800">{passCount} / {failCount} / {notApplicableCount}</dd></div>
+              <div><dt className="text-xs text-slate-500">Findings</dt><dd className="mt-1 font-semibold text-slate-800">{findings.filter((finding) => finding.inspectionId === inspection.id).length}</dd></div>
+            </dl>
+            {completionError ? <p role="alert" className="mt-4 text-sm font-medium text-red-700">{completionError}</p> : null}
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={isCompleting}
+                onClick={() => setConfirmationOpen(false)}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isCompleting}
+                onClick={confirmCompletion}
+                className="rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-800 disabled:cursor-wait disabled:opacity-60"
+              >
+                {isCompleting ? "Completing…" : "Confirm Completion"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}
