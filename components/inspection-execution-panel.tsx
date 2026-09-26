@@ -25,6 +25,7 @@ import {
   getOfflineInspectionProgress,
   saveOfflineFinding,
   saveOfflineInspectionProgress,
+  acknowledgeOfflineFindingSync,
 } from "@/lib/offline-db";
 import { completeInspectionAndTransfer } from "@/lib/inspection-workflow";
 import { saveFindingToSupabase } from "@/lib/supabase/finding-write";
@@ -52,6 +53,8 @@ type ChecklistAnswer = { result?: ChecklistResult; remark: string };
   gps: GpsLocation | null;
   evidence: EvidenceAttachment[];
   createdAt: string;
+  serverId?: string;
+  serverUpdatedAt?: string;
 };
 
 const statusStyles: Record<InspectionStatus, string> = {
@@ -154,6 +157,8 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
               return { localId: item.id.slice(`${record.id}:`.length), file, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize, previewUrl };
             }),
             createdAt: record.createdAt,
+            serverId: record.serverId,
+            serverUpdatedAt: record.serverUpdatedAt,
           }];
         });
 
@@ -347,7 +352,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
 
     const existingFinding = getFinding(checklistItemId);
     setIsSavingFinding(true);
-    let findingId = existingFinding?.id ?? `F-${String(findings.length + 1).padStart(3, "0")}`;
+    const findingId = existingFinding?.id ?? `F-${String(findings.length + 1).padStart(3, "0")}`;
     try {
       const finding: LocalFinding = {
         id: findingId,
@@ -362,11 +367,13 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
         gps: draft.gps,
         evidence: draft.evidence,
         createdAt: existingFinding?.createdAt ?? new Date().toISOString(),
+        serverId: existingFinding?.serverId,
+        serverUpdatedAt: existingFinding?.serverUpdatedAt,
       };
       const existingIndex = findings.findIndex((item) => item.inspectionId === inspection.id && item.checklistItemId === checklistItemId);
       const nextFindings = existingIndex < 0 ? [...findings, finding] : findings.map((item, index) => index === existingIndex ? finding : item);
       const offlineRecordId = `inspection:${inspection.id}:${finding.id}`;
-      await saveOfflineFinding({
+      const offlineRecord = await saveOfflineFinding({
         id: offlineRecordId,
         findingId: finding.id,
         kind: "checklist",
@@ -380,6 +387,8 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
         remarks: finding.remarks,
         gps: finding.gps,
         createdAt: finding.createdAt,
+        serverId: existingFinding?.serverId,
+        serverUpdatedAt: existingFinding?.serverUpdatedAt,
       }, finding.evidence.map((item) => ({
         id: `${offlineRecordId}:${item.localId}`,
         findingRecordId: offlineRecordId,
@@ -392,7 +401,11 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       let syncPending = false;
       if (!isDemoMode() && isOnline) {
         try {
-          await saveFindingToSupabase(draft, inspection, checklistItemId, existingFinding?.id);
+          const receipt = await saveFindingToSupabase(draft, inspection, checklistItemId,
+            existingFinding?.serverId ?? (existingFinding?.id.startsWith("internal-") ? existingFinding.id : undefined));
+          finding.serverId = receipt.id;
+          finding.serverUpdatedAt = receipt.serverUpdatedAt;
+          await acknowledgeOfflineFindingSync(offlineRecord, receipt.id, receipt.serverUpdatedAt);
         } catch {
           syncPending = true;
         }

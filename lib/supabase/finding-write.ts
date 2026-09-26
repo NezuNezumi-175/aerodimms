@@ -1,9 +1,9 @@
 import type { FindingDraft, Inspection } from "@/lib/inspection-data";
 import { createClient } from "@/lib/supabase/client";
 
-const EVIDENCE_BUCKET = "finding-evidence";
+export const EVIDENCE_BUCKET = "finding-evidence";
 
-function safeFileName(fileName: string) {
+export function safeFileName(fileName: string) {
   return fileName.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "image";
 }
 
@@ -40,6 +40,7 @@ export async function saveFindingToSupabase(
   if (profileError) throw profileError;
 
   const uploadedPaths: string[] = [];
+  let serverUpdatedAt: string;
   try {
     const evidenceRows = [];
     for (const attachment of draft.evidence) {
@@ -79,7 +80,7 @@ export async function saveFindingToSupabase(
       updated_at: now,
     };
     const findingResult = existingFindingId
-      ? await supabase.from("findings").update(findingValues).eq("id", findingId)
+      ? await supabase.from("findings").update(findingValues).eq("id", findingId).select("id, updated_at").single()
       : await supabase.from("findings").insert({
           ...findingValues,
           id: findingId,
@@ -87,9 +88,10 @@ export async function saveFindingToSupabase(
           source: "INTERNAL_INSPECTION",
           created_by_employee_id: profile?.employee_id ?? null,
           created_at: now,
-        });
+        }).select("id, updated_at").single();
     const findingError = findingResult.error;
     if (findingError) throw findingError;
+    serverUpdatedAt = findingResult.data.updated_at;
 
     if (evidenceRows.length) {
       const { error: evidenceError } = await supabase.from("evidence").insert(evidenceRows);
@@ -100,5 +102,5 @@ export async function saveFindingToSupabase(
     throw error;
   }
 
-  return { id: findingId, findingCode };
+  return { id: findingId, findingCode, serverUpdatedAt };
 }

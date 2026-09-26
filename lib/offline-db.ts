@@ -20,6 +20,9 @@ export type OfflineFindingRecord = {
   createdAt: string;
   updatedAt: string;
   syncStatus: SyncStatus;
+  // Optional sync receipt; old IndexedDB records remain readable without migration.
+  serverId?: string;
+  serverUpdatedAt?: string;
 };
 
 export type OfflineEvidenceRecord = {
@@ -140,7 +143,13 @@ export async function saveOfflineFinding(
   };
 
   try {
-    findingsStore.put(storedRecord);
+    const previousRecord = findingsStore.get(record.id);
+    previousRecord.onsuccess = () => {
+      const previous: OfflineFindingRecord | undefined = previousRecord.result;
+      storedRecord.serverId = record.serverId ?? previous?.serverId;
+      storedRecord.serverUpdatedAt = record.serverUpdatedAt ?? previous?.serverUpdatedAt;
+      findingsStore.put(storedRecord);
+    };
     const existingEvidence = evidenceStore.index("findingRecordId").getAllKeys(record.id);
     existingEvidence.onsuccess = () => {
       existingEvidence.result.forEach((key) => evidenceStore.delete(key));
@@ -229,4 +238,75 @@ export async function getOfflineInspectionFindings(inspectionId: string) {
     const evidence = await getOfflineEvidenceForFinding(record.id);
     return { record, evidence } satisfies OfflineFindingWithEvidence;
   }));
+}
+
+export async function getOfflineSyncQueue() {
+  const database = await openDatabase();
+  const transaction = database.transaction([FINDINGS_STORE, PROGRESS_STORE, EVIDENCE_STORE], "readonly");
+  const done = transactionComplete(transaction);
+  const [findings, progress, evidence] = await Promise.all([
+    requestResult<OfflineFindingRecord[]>(transaction.objectStore(FINDINGS_STORE).getAll()),
+    requestResult<OfflineInspectionProgress[]>(transaction.objectStore(PROGRESS_STORE).getAll()),
+    requestResult<OfflineEvidenceRecord[]>(transaction.objectStore(EVIDENCE_STORE).getAll()),
+    done,
+  ]);
+  return {
+    findings: findings.filter((record) => record.syncStatus !== "synced" || evidence.some((item) => item.findingRecordId === record.id && item.syncStatus !== "synced"))
+      .map((record) => ({ record, evidence: evidence.filter((item) => item.findingRecordId === record.id) })),
+    progress: progress.filter((record) => record.syncStatus !== "synced"),
+  };
+}
+
+// Compare the uploaded revision before marking it; edits made during an upload stay pending.
+async function markRevisionSynced(storeName: string, key: string, revision: string, revisionField: "updatedAt" | "createdAt", snapshot: OfflineFindingRecord | OfflineEvidenceRecord | OfflineInspectionProgress) {
+  const database = await openDatabase();
+  const transaction = database.transaction(storeName, "readwrite");
+  const done = transactionComplete(transaction);
+  const store = transaction.objectStore(storeName);
+  const request = store.get(key);
+  request.onsuccess = () => {
+    const current = request.result;
+    const unchanged = current && Object.entries(snapshot).every(([field, value]) =>
+      field === "syncStatus" || field === "blob" || JSON.stringify(current[field]) === JSON.stringify(value));
+    if (unchanged && current[revisionField] === revision) store.put({ ...current, syncStatus: "synced" });
+  };
+  await done;
+}
+
+export function markOfflineFindingSynced(record: OfflineFindingRecord) {
+  return markRevisionSynced(FINDINGS_STORE, record.id, record.updatedAt, "updatedAt", record);
+}
+
+export async function acknowledgeOfflineFindingSync(record: OfflineFindingRecord, serverId: string, serverUpdatedAt: string) {
+  const database = await openDatabase();
+  const transaction = database.transaction([FINDINGS_STORE, EVIDENCE_STORE], "readwrite");
+  const done = transactionComplete(transaction);
+  const findings = transaction.objectStore(FINDINGS_STORE);
+  const evidence = transaction.objectStore(EVIDENCE_STORE);
+  const request = findings.get(record.id);
+  request.onsuccess = () => {
+    const current: OfflineFindingRecord | undefined = request.result;
+    if (!current || current.inspectionId !== record.inspectionId || current.checklistItemId !== record.checklistItemId) return;
+    const unchanged = Object.entries(record).every(([field, value]) =>
+      field === "syncStatus" || field === "serverId" || field === "serverUpdatedAt"
+      || JSON.stringify(current[field as keyof OfflineFindingRecord]) === JSON.stringify(value));
+    findings.put({ ...current, serverId, serverUpdatedAt, syncStatus: unchanged ? "synced" : "pending" });
+    if (!unchanged) return;
+    for (const id of record.evidenceIds) {
+      const photo = evidence.get(id);
+      photo.onsuccess = () => {
+        const item: OfflineEvidenceRecord | undefined = photo.result;
+        if (item && item.createdAt === record.updatedAt) evidence.put({ ...item, syncStatus: "synced" });
+      };
+    }
+  };
+  await done;
+}
+
+export function markOfflineEvidenceSynced(record: OfflineEvidenceRecord) {
+  return markRevisionSynced(EVIDENCE_STORE, record.id, record.createdAt, "createdAt", record);
+}
+
+export function markOfflineProgressSynced(record: OfflineInspectionProgress) {
+  return markRevisionSynced(PROGRESS_STORE, record.inspectionId, record.updatedAt, "updatedAt", record);
 }

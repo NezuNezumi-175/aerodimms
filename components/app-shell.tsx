@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { useNetworkStatus } from "@/lib/use-network-status";
+import { useOfflineSync } from "@/lib/use-offline-sync";
 import { setStoredUser } from "@/lib/demo-data";
 import { isDemoMode } from "@/lib/app-data";
 
@@ -14,8 +15,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const isOnline = useNetworkStatus();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const connectionLabel = isOnline ? "Online" : "Offline – Data Stored Locally";
-  const connectionColor = isOnline
+  const sync = useOfflineSync(isOnline, currentUser?.id, pathname !== "/login" && pathname !== "/" && !isDemoMode());
+  const connectionLabel = !isOnline ? "Offline – Data Stored Locally" : sync.syncing ? "Syncing" : sync.error ? "Sync pending" : "Online";
+  const connectionColor = isOnline && !sync.syncing && !sync.error
     ? "bg-emerald-500/15 text-emerald-300"
     : "bg-amber-500/15 text-amber-200";
 
@@ -44,7 +46,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       active = false;
       subscription.unsubscribe();
     };
-  }, [pathname, router]);
+  }, [pathname, router, isOnline]);
 
   if (pathname === "/login" || pathname === "/") {
     return <>{children}</>;
@@ -98,7 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               })}
             </nav>
 
-            <div className={`ml-auto flex shrink-0 items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ${connectionColor}`}>
+            <div role="status" title={sync.error || undefined} className={`ml-auto flex shrink-0 items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ${connectionColor}`}>
               <span className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-400" : "bg-amber-300"}`} />
               {connectionLabel}
             </div>
@@ -130,6 +132,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           </header>
+
+          {isOnline && sync.error ? <p role="alert" className="shrink-0 bg-amber-50 px-5 py-2 text-sm text-amber-900">Synchronization will retry automatically. Local data is retained. {sync.error}</p> : null}
 
           <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
         </div>

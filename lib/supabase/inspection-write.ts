@@ -9,7 +9,7 @@ import {
   type InspectionStatus,
 } from "@/lib/inspection-data";
 import { createClient } from "@/lib/supabase/client";
-import { saveFindingToSupabase } from "@/lib/supabase/finding-write";
+import { EVIDENCE_BUCKET, saveFindingToSupabase } from "@/lib/supabase/finding-write";
 
 export type ChecklistAnswerValue = { result?: "Pass" | "Fail" | "N/A"; remark: string };
 export type CreateSupabaseInspectionInput = {
@@ -118,9 +118,32 @@ export async function loadSupabaseInspectionExecution(inspection: Inspection) {
     gps: row.latitude !== null && row.longitude !== null
       ? { latitude: row.latitude, longitude: row.longitude, capturedAt: row.gps_captured_at ?? row.created_at }
       : null,
-    evidence: [],
+    evidence: [] as EvidenceAttachment[],
     createdAt: row.created_at,
+    serverId: row.id,
+    serverUpdatedAt: row.updated_at,
   }));
+
+  if (inspectionResult.data.status !== "Completed" && findings.length) {
+    const { data: evidenceRows, error } = await supabase.from("evidence").select("*")
+      .in("finding_id", findings.map((finding) => finding.id));
+    if (error) throw error;
+    for (const row of evidenceRows ?? []) {
+      const finding = findings.find((item) => item.id === row.finding_id);
+      if (!finding) continue;
+      const [download, preview] = await Promise.all([
+        supabase.storage.from(EVIDENCE_BUCKET).download(row.storage_path),
+        supabase.storage.from(EVIDENCE_BUCKET).createSignedUrl(row.storage_path, 3600),
+      ]);
+      if (download.error) throw download.error;
+      if (preview.error) throw preview.error;
+      const file = new File([download.data], row.file_name, { type: row.mime_type });
+      finding.evidence.push({
+        localId: row.id, file, fileName: row.file_name, fileType: row.mime_type,
+        fileSize: row.file_size ?? file.size, previewUrl: preview.data.signedUrl,
+      });
+    }
+  }
 
   let completedRecord: CompletedInspectionRecord | null = null;
   if (inspectionResult.data.status === "Completed") {
