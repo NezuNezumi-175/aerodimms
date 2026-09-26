@@ -14,9 +14,10 @@ import {
   type FindingCategory,
   type FindingSeverity,
   type GpsLocation,
+  type Inspection,
   type InspectionStatus,
 } from "@/lib/inspection-data";
-import { loadDemoState } from "@/lib/demo-data";
+import { loadDemoState, saveDemoState } from "@/lib/demo-data";
 import { createFindingEvidence, requestFindingGps } from "@/lib/finding-form";
 import {
   getOfflineInspectionFindings,
@@ -62,7 +63,10 @@ function resultButtonClass(result: ChecklistResult, selected: boolean) {
 }
 
 export function InspectionExecutionPanel({ inspectionId }: { inspectionId: string }) {
-  const inspection = allInspections.find((item) => item.id === inspectionId);
+  const [adHocInspection, setAdHocInspection] = useState<Inspection | null>(null);
+  const [adHocInspectionLoadedFor, setAdHocInspectionLoadedFor] = useState<string | null>(null);
+  const inspection = allInspections.find((item) => item.id === inspectionId)
+    ?? (adHocInspection?.id === inspectionId ? adHocInspection : null);
   const [answers, setAnswers] = useState<Record<string, ChecklistAnswer>>({});
   const [findings, setFindings] = useState<LocalFinding[]>([]);
   const [findingFormFor, setFindingFormFor] = useState<string | null>(null);
@@ -84,6 +88,45 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const findingFormForRef = useRef<string | null>(null);
   const preservePreviewUrlsOnUnmountRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      const storedInspection = loadDemoState().adHocInspections?.find((item) => item.id === inspectionId) ?? null;
+      setAdHocInspection(storedInspection);
+      setAdHocInspectionLoadedFor(inspectionId);
+    });
+    return () => {
+      active = false;
+    };
+  }, [inspectionId]);
+
+  useEffect(() => {
+    if (adHocInspection?.status !== "Scheduled") return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      try {
+        const state = loadDemoState();
+        const currentInspection = state.adHocInspections?.find((item) => item.id === adHocInspection.id);
+        if (!currentInspection || currentInspection.status !== "Scheduled") return;
+        const startedInspection = { ...currentInspection, status: "In Progress" as const };
+        saveDemoState({
+          ...state,
+          adHocInspections: state.adHocInspections?.map((item) =>
+            item.id === startedInspection.id ? startedInspection : item,
+          ),
+        });
+        setAdHocInspection(startedInspection);
+      } catch {
+        setOfflineStorageError("Unable to update this Inspection status in local demo storage.");
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [adHocInspection?.id, adHocInspection?.status]);
 
   useEffect(() => {
     let active = true;
@@ -205,6 +248,10 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     },
     [],
   );
+
+  if (!inspection && adHocInspectionLoadedFor !== inspectionId) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspection…</div>;
+  }
 
   if (!inspection) {
     return (
