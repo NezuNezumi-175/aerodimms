@@ -25,11 +25,12 @@ import {
   getOfflineInspectionProgress,
   saveOfflineFinding,
   saveOfflineInspectionProgress,
-  acknowledgeOfflineFindingSync,
+  cacheOfflineInspections,
 } from "@/lib/offline-db";
 import { completeInspectionAndTransfer } from "@/lib/inspection-workflow";
-import { saveFindingToSupabase } from "@/lib/supabase/finding-write";
 import { useNetworkStatus } from "@/lib/use-network-status";
+import { useSyncRefresh } from "@/lib/use-sync-refresh";
+import { synchronizeOfflineData } from "@/lib/offline-sync";
 import {
   completeSupabaseInspection,
   loadSupabaseInspectionExecution,
@@ -42,6 +43,8 @@ type ChecklistResult = "Pass" | "Fail" | "N/A";
 type ChecklistAnswer = { result?: ChecklistResult; remark: string };
   type LocalFinding = {
   id: string;
+  internalId?: string;
+  findingCode?: string;
   inspectionId: string;
   checklistItemId: string;
   checklistItemTitle: string;
@@ -112,11 +115,14 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
   const findingFormForRef = useRef<string | null>(null);
   const preservePreviewUrlsOnUnmountRef = useRef(false);
   const isOnline = useNetworkStatus();
+  const syncRevision = useSyncRefresh();
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       let storedCompletedRecord: CompletedInspectionRecord | null = null;
+      let restoredProgress: Awaited<ReturnType<typeof getOfflineInspectionProgress>>;
+      let localFindings: LocalFinding[] = [];
       try {
         const demoState = loadDemoState();
         storedCompletedRecord = demoState.completedInspectionRecords?.find(
@@ -141,6 +147,8 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
           if (!record.inspectionId || !record.checklistItemId || !record.checklistItemTitle) return [];
           return [{
             id: record.findingId,
+            internalId: record.internalId,
+            findingCode: record.findingCode,
             inspectionId: record.inspectionId,
             checklistItemId: record.checklistItemId,
             checklistItemTitle: record.checklistItemTitle,
@@ -161,11 +169,13 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
             serverUpdatedAt: record.serverUpdatedAt,
           }];
         });
+        restoredProgress = progress;
+        localFindings = restoredFindings;
 
         if (isDemoMode() || !isOnline) {
-          setInspection(allInspections.find((item) => item.id === inspectionId));
-          setAnswers(progress?.answers ?? {});
-          setFindings(restoredFindings);
+          setInspection((current) => progress?.inspection ?? current ?? allInspections.find((item) => item.id === inspectionId));
+          setAnswers((current) => progress && Object.keys(progress.answers).length ? progress.answers : current);
+          setFindings((current) => restoredFindings.length ? restoredFindings : current);
           setCompletedRecord(storedCompletedRecord);
           setTransferredCount((loadDemoState().internalInspectionFindings ?? []).filter((finding) => finding.sourceInspectionId === inspectionId).length);
         } else {
@@ -183,21 +193,31 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
             remoteInspection.status = "In Progress";
             setInspection({ ...remoteInspection });
           }
+          await cacheOfflineInspections([remoteInspection]);
           const data = await loadSupabaseInspectionExecution(remoteInspection);
           if (!active) return;
+          setLoadError("");
+          const pendingRecords = storedFindings.filter(({ record, evidence }) =>
+            record.syncStatus !== "synced" || evidence.some((item) => item.syncStatus !== "synced"));
+          const pendingItemIds = new Set(pendingRecords.map(({ record }) => record.checklistItemId));
+          const pendingFindingIds = new Set(pendingRecords.map(({ record }) => record.findingId));
           const remoteFindingIds = new Set(data.findings.map((item) => item.checklistItemId));
           setAnswers(progress?.syncStatus === "pending" ? { ...data.answers, ...progress.answers } : data.answers);
-          setFindings([...data.findings, ...restoredFindings.filter((item) => !remoteFindingIds.has(item.checklistItemId))]);
-          setCompletedRecord(progress?.completionState === "COMPLETED" ? storedCompletedRecord : data.completedRecord);
+          setFindings([...data.findings.filter((item) => !pendingItemIds.has(item.checklistItemId)),
+            ...restoredFindings.filter((item) => pendingFindingIds.has(item.id)
+              || (!pendingItemIds.has(item.checklistItemId) && !remoteFindingIds.has(item.checklistItemId)))]);
+          setCompletedRecord(progress?.syncStatus !== "synced" && progress?.completionState === "COMPLETED" ? storedCompletedRecord : data.completedRecord);
           setTransferredCount(Math.max(data.findings.length, restoredFindings.length));
         }
       } catch (error) {
         if (active) {
           setOfflineStorageError("Unable to restore local inspection data from IndexedDB.");
-          if (!isDemoMode() && isOnline) setLoadError(error instanceof Error ? error.message : "Could not load inspection data.");
-          setInspection(allInspections.find((item) => item.id === inspectionId));
-          setAnswers({});
-          setFindings([]);
+          if (!isDemoMode() && isOnline && !restoredProgress && !localFindings.length) {
+            setLoadError(error instanceof Error ? error.message : "Could not load inspection data.");
+          }
+          setInspection((current) => restoredProgress?.inspection ?? current ?? allInspections.find((item) => item.id === inspectionId));
+          if (restoredProgress) setAnswers(restoredProgress.answers);
+          if (localFindings.length) setFindings(localFindings);
           setCompletedRecord(storedCompletedRecord);
         }
       } finally {
@@ -208,7 +228,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     return () => {
       active = false;
     };
-  }, [inspectionId, isOnline]);
+  }, [inspectionId, isOnline, syncRevision]);
 
   useEffect(() => {
     const retainedUrls = new Set<string>();
@@ -291,6 +311,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     completionState: "IN_PROGRESS" | "COMPLETED" = "IN_PROGRESS",
   ) => saveOfflineInspectionProgress({
     inspectionId: inspection.id,
+    inspection,
     answers: nextAnswers,
     findingRecordIds: nextFindings.map((finding) => `inspection:${inspection.id}:${finding.id}`),
     completionState,
@@ -352,10 +373,12 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
 
     const existingFinding = getFinding(checklistItemId);
     setIsSavingFinding(true);
-    const findingId = existingFinding?.id ?? `F-${String(findings.length + 1).padStart(3, "0")}`;
+    const findingId = existingFinding?.id ?? `internal-${crypto.randomUUID()}`;
     try {
       const finding: LocalFinding = {
         id: findingId,
+        internalId: existingFinding?.internalId ?? (!existingFinding ? findingId : undefined),
+        findingCode: existingFinding?.findingCode ?? (!existingFinding ? "Pending sync" : existingFinding.id),
         inspectionId: inspection.id,
         checklistItemId,
         checklistItemTitle,
@@ -373,9 +396,11 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       const existingIndex = findings.findIndex((item) => item.inspectionId === inspection.id && item.checklistItemId === checklistItemId);
       const nextFindings = existingIndex < 0 ? [...findings, finding] : findings.map((item, index) => index === existingIndex ? finding : item);
       const offlineRecordId = `inspection:${inspection.id}:${finding.id}`;
-      const offlineRecord = await saveOfflineFinding({
+      await saveOfflineFinding({
         id: offlineRecordId,
         findingId: finding.id,
+        internalId: finding.internalId,
+        findingCode: finding.findingCode,
         kind: "checklist",
         inspectionId: inspection.id,
         checklistItemId: finding.checklistItemId,
@@ -401,11 +426,20 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       let syncPending = false;
       if (!isDemoMode() && isOnline) {
         try {
-          const receipt = await saveFindingToSupabase(draft, inspection, checklistItemId,
-            existingFinding?.serverId ?? (existingFinding?.id.startsWith("internal-") ? existingFinding.id : undefined));
-          finding.serverId = receipt.id;
-          finding.serverUpdatedAt = receipt.serverUpdatedAt;
-          await acknowledgeOfflineFindingSync(offlineRecord, receipt.id, receipt.serverUpdatedAt);
+          // Use the existing serialized queue so reconnect and an interactive
+          // save cannot insert the same local finding through different writers.
+          await synchronizeOfflineData();
+          let stored = (await getOfflineInspectionFindings(inspection.id))
+            .find(({ record }) => record.id === offlineRecordId)?.record;
+          if (stored?.syncStatus !== "synced") {
+            await synchronizeOfflineData();
+            stored = (await getOfflineInspectionFindings(inspection.id))
+              .find(({ record }) => record.id === offlineRecordId)?.record;
+          }
+          finding.serverId = stored?.serverId;
+          finding.serverUpdatedAt = stored?.serverUpdatedAt;
+          finding.findingCode = stored?.findingCode ?? finding.findingCode;
+          syncPending = stored?.syncStatus !== "synced";
         } catch {
           syncPending = true;
         }
@@ -451,6 +485,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       .filter((finding) => finding.inspectionId === inspection.id)
       .map((finding) => ({
         id: finding.id,
+        findingCode: finding.findingCode,
         inspectionId: finding.inspectionId,
         checklistItemId: finding.checklistItemId,
         checklistItemTitle: finding.checklistItemTitle,
@@ -478,7 +513,10 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
 
     try {
       await persistProgress(answers, findings, "COMPLETED");
-      if (!isDemoMode() && isOnline) await completeSupabaseInspection(inspection, answers);
+      if (!isDemoMode() && isOnline) {
+        await synchronizeOfflineData();
+        await completeSupabaseInspection(inspection, answers);
+      }
       const result = completeInspectionAndTransfer(record);
       preservePreviewUrlsOnUnmountRef.current = completedFindings.some(
         (finding) => finding.evidence.some((item) => item.previewUrl),
@@ -676,9 +714,9 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
                     }`}>
                       {isFailed
                         ? existingFinding
-                          ? `Fail - Finding recorded (${existingFinding.id})`
+                          ? `Fail - Finding recorded (${existingFinding.findingCode ?? existingFinding.id})`
                           : "Fail - Finding required"
-                        : `Finding ${existingFinding?.id} recorded and retained for this checklist item`}
+                        : `Finding ${existingFinding?.findingCode ?? existingFinding?.id} recorded and retained for this checklist item`}
                     </p>
                     {existingFinding?.gps ? (
                       <span className="w-fit rounded-full bg-white px-2.5 py-1 text-xs font-medium text-sky-800">GPS captured</span>
@@ -710,7 +748,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
 
                 {isFindingFormOpen ? (
                   <FindingForm
-                    title={existingFinding ? `Edit Finding ${existingFinding.id}` : "Record Finding"}
+                    title={existingFinding ? `Edit Finding ${existingFinding.findingCode ?? existingFinding.id}` : "Record Finding"}
                     context={`Linked to ${inspection.id} / ${item.id} / ${item.label}`}
                     draft={findingDraft}
                     onDraftChange={updateFindingDraft}

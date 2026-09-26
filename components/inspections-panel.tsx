@@ -10,6 +10,8 @@ import { saveManualFinding } from "@/lib/inspection-workflow";
 import { saveFindingToSupabase } from "@/lib/supabase/finding-write";
 import { createSupabaseInspection, loadSupabaseInspections } from "@/lib/supabase/inspection-write";
 import { useNetworkStatus } from "@/lib/use-network-status";
+import { useSyncRefresh } from "@/lib/use-sync-refresh";
+import { getCachedOfflineInspections } from "@/lib/offline-db";
 import {
   allInspections,
   checklistByInspectionType,
@@ -175,6 +177,7 @@ export function InspectionsPanel() {
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const inspectionLoadRequestRef = useRef(0);
   const isOnline = useNetworkStatus();
+  const syncRevision = useSyncRefresh();
 
   useEffect(() => {
     let active = true;
@@ -199,9 +202,16 @@ export function InspectionsPanel() {
   useEffect(() => {
     if (isDemoMode()) return;
     if (!isOnline) {
-      setSupabaseInspections(allInspections);
-      setInspectionLoadError("");
-      return;
+      let active = true;
+      getCachedOfflineInspections().then((cached) => {
+        if (active) {
+          setSupabaseInspections((previous) => Array.from(new Map(
+            [...allInspections, ...(previous ?? []), ...cached].map((item) => [item.id, item]),
+          ).values()));
+          setInspectionLoadError("");
+        }
+      }).catch(() => { /* Keep the last loaded list if local storage is unavailable. */ });
+      return () => { active = false; };
     }
     let active = true;
     const requestId = ++inspectionLoadRequestRef.current;
@@ -214,7 +224,7 @@ export function InspectionsPanel() {
       }
     });
     return () => { active = false; };
-  }, [isOnline]);
+  }, [isOnline, syncRevision]);
 
   useEffect(() => {
     const retainedUrls = new Set(findingDraft.evidence.map((attachment) => attachment.previewUrl));
@@ -238,7 +248,7 @@ export function InspectionsPanel() {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspections…</div>;
   }
 
-  const inspectionRows = isDemoMode() || !isOnline ? allInspections : supabaseInspections ?? [];
+  const inspectionRows = isDemoMode() ? allInspections : supabaseInspections ?? [];
   const storedCompletedRecords = demoState.completedInspectionRecords ?? [];
   const completedRecords = !isDemoMode() && isOnline
     ? storedCompletedRecords.filter((record) => !inspectionRows.some((inspection) => inspection.id === record.inspection.id))

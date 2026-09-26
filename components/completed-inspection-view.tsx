@@ -71,7 +71,7 @@ export function CompletedInspectionView({
               <article key={finding.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{finding.id} · {finding.checklistItemId}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{finding.findingCode ?? finding.id} · {finding.checklistItemId}</p>
                     <h3 className="mt-1 font-semibold text-slate-900">{finding.checklistItemTitle}</h3>
                     <p className="mt-2 text-sm text-slate-700">{finding.description}</p>
                   </div>

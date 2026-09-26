@@ -71,6 +71,7 @@ export type CompletedChecklistAnswer = {
 
 export type CompletedInspectionFinding = {
   id: string;
+  findingCode?: string;
   inspectionId: string;
   checklistItemId: string;
   checklistItemTitle: string;

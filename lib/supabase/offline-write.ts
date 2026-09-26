@@ -2,6 +2,7 @@ import type { OfflineFindingWithEvidence } from "@/lib/offline-db";
 import { markOfflineEvidenceSynced } from "@/lib/offline-db";
 import { createClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, safeFileName } from "@/lib/supabase/finding-write";
+import { insertFindingWithUniqueCode } from "@/lib/supabase/finding-code";
 
 async function sameContent(left: Blob, right: Blob) {
   const [leftHash, rightHash] = await Promise.all([
@@ -37,13 +38,13 @@ export async function syncOfflineFinding({ record, evidence }: OfflineFindingWit
   if (record.evidenceIds.some((id) => !evidence.some((item) => item.id === id))) {
     throw new Error("A referenced local evidence blob is missing. The finding remains pending.");
   }
-  const knownServerId = record.serverId ?? (record.findingId.startsWith("internal-") ? record.findingId : undefined);
-  const localId = knownServerId ?? (record.kind === "manual"
+  const knownServerId = record.serverId ?? (!record.internalId && record.findingId.startsWith("internal-") ? record.findingId : undefined);
+  const localId = knownServerId ?? record.internalId ?? (record.kind === "manual"
     ? record.id.slice("manual:".length)
     : `internal-${record.inspectionId}-${record.findingId}`);
   const findExisting = async () => {
     let query = supabase.from("findings").select("*");
-    query = !knownServerId && record.kind === "checklist" && record.inspectionId && record.checklistItemId
+    query = !knownServerId && !record.internalId && record.kind === "checklist" && record.inspectionId && record.checklistItemId
       ? query.eq("source_inspection_id", record.inspectionId).eq("checklist_item_id", record.checklistItemId)
       : query.eq("id", localId);
     const { data, error } = await query.maybeSingle();
@@ -68,20 +69,18 @@ export async function syncOfflineFinding({ record, evidence }: OfflineFindingWit
     updated_at: record.updatedAt,
   };
   let serverUpdatedAt: string = existing?.updated_at ?? record.updatedAt;
+  let findingCode: string = existing?.finding_code ?? record.findingCode ?? record.findingId;
   let reconciledLegacyInsert = false;
   if (!existing) {
-    const { data: inserted, error } = await supabase.from("findings").insert({
+    const inserted = await insertFindingWithUniqueCode({
       ...values, id: localId,
-      finding_code: record.kind === "manual" ? record.findingId : `${record.inspectionId}-${record.findingId}`,
       source_finding_id: record.findingId, source: "INTERNAL_INSPECTION", status: "FINDING",
       created_by_employee_id: employeeId, created_at: record.createdAt,
-    }).select("id, updated_at").single();
-    if (error) {
-      if (error.code !== "23505") throw error;
-      existing = await findExisting();
-      if (!existing) throw error;
-      serverUpdatedAt = existing.updated_at;
-    } else serverUpdatedAt = inserted.updated_at;
+    });
+    existing = await findExisting();
+    if (!existing) throw new Error("Inserted finding could not be verified. Local data remains pending.");
+    serverUpdatedAt = inserted.updated_at;
+    findingCode = inserted.finding_code;
   }
   if (existing) {
     // Preserve the existing Issues lifecycle status, assignee and original creator.
@@ -139,7 +138,8 @@ export async function syncOfflineFinding({ record, evidence }: OfflineFindingWit
     } else {
       let matched = false;
       for (const candidate of existingEvidence ?? []) {
-        if (reusedEvidenceIds.has(candidate.id) || candidate.file_name !== item.fileName || candidate.mime_type !== item.fileType || candidate.file_size !== item.fileSize) continue;
+        if (reusedEvidenceIds.has(candidate.id) || candidate.file_name !== item.fileName || candidate.mime_type !== item.fileType
+            || (candidate.file_size !== null && candidate.file_size !== item.fileSize)) continue;
         const { data: uploaded, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(candidate.storage_path);
         if (error) throw error;
         if (uploaded && await sameContent(uploaded, item.blob)) {
@@ -195,5 +195,5 @@ export async function syncOfflineFinding({ record, evidence }: OfflineFindingWit
       throw new Error(`Finding ${findingId} changed during legacy reconciliation. Local changes remain pending for review.`);
     }
   }
-  return { id: findingId, serverUpdatedAt };
+  return { id: findingId, serverUpdatedAt, findingCode };
 }

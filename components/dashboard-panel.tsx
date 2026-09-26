@@ -8,14 +8,18 @@ import {
   type DemoState,
   type Severity,
 } from "@/lib/demo-data";
+import { useSyncRefresh } from "@/lib/use-sync-refresh";
 import { loadAppState } from "@/lib/app-data";
 
 export function DashboardPanel() {
   const [state, setState] = useState<DemoState | null>(null);
 
+  const syncRevision = useSyncRefresh();
   useEffect(() => {
-    loadAppState().then(setState).catch(() => setState(null));
-  }, []);
+    let active = true;
+    loadAppState().then((data) => { if (active) setState(data); }).catch(() => { if (active) setState(null); });
+    return () => { active = false; };
+  }, [syncRevision]);
 
   const dashboard = useMemo(() => {
     if (!state) return null;

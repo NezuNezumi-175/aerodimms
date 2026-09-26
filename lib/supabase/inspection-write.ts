@@ -10,6 +10,7 @@ import {
 } from "@/lib/inspection-data";
 import { createClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, saveFindingToSupabase } from "@/lib/supabase/finding-write";
+import { cacheOfflineInspections, getOfflineSyncQueue } from "@/lib/offline-db";
 
 export type ChecklistAnswerValue = { result?: "Pass" | "Fail" | "N/A"; remark: string };
 export type CreateSupabaseInspectionInput = {
@@ -52,7 +53,7 @@ export async function loadSupabaseInspections(): Promise<Inspection[]> {
     if ((data ?? []).length < pageSize) break;
   }
 
-  return rows.map((row) => ({
+  const inspections: Inspection[] = rows.map((row) => ({
     id: row.id,
     inspector: row.inspector_name,
     inspectorEmployeeId: row.inspector_employee_id ?? undefined,
@@ -61,6 +62,8 @@ export async function loadSupabaseInspections(): Promise<Inspection[]> {
     date: displayDate(row.scheduled_date),
     status: row.status as InspectionStatus,
   }));
+  await cacheOfflineInspections(inspections);
+  return inspections;
 }
 
 export async function createSupabaseInspection(input: CreateSupabaseInspectionInput): Promise<Inspection> {
@@ -79,7 +82,7 @@ export async function createSupabaseInspection(input: CreateSupabaseInspectionIn
     .single();
   if (error) throw error;
 
-  return {
+  const inspection: Inspection = {
     id: data.id,
     inspector: data.inspector_name,
     inspectorEmployeeId: data.inspector_employee_id ?? undefined,
@@ -88,6 +91,8 @@ export async function createSupabaseInspection(input: CreateSupabaseInspectionIn
     date: displayDate(data.scheduled_date),
     status: data.status as InspectionStatus,
   };
+  await cacheOfflineInspections([inspection]);
+  return inspection;
 }
 
 export async function loadSupabaseInspectionExecution(inspection: Inspection) {
@@ -107,6 +112,8 @@ export async function loadSupabaseInspectionExecution(inspection: Inspection) {
   }
   const findings = (findingsResult.data ?? []).map((row) => ({
     id: row.id,
+    findingCode: row.finding_code,
+    internalId: row.id,
     inspectionId: inspection.id,
     checklistItemId: row.checklist_item_id ?? "",
     checklistItemTitle: checklistByInspectionType[inspection.type].find((item) => item.id === row.checklist_item_id)?.label ?? "",
@@ -165,6 +172,7 @@ export async function loadSupabaseInspectionExecution(inspection: Inspection) {
       checklist,
       findings: findings.map((item) => ({
         id: item.id,
+        findingCode: item.findingCode,
         inspectionId: inspection.id,
         checklistItemId: item.checklistItemId,
         checklistItemTitle: item.checklistItemTitle,
@@ -244,8 +252,16 @@ export async function completeSupabaseInspection(
   }
 
   await saveSupabaseChecklistAnswers(inspection, answers);
+  await assertInspectionDependenciesSynced(inspection.id);
   const completedAt = new Date().toISOString();
   const { error } = await createClient().from("inspections").update({ status: "Completed", completed_at: completedAt, updated_at: completedAt }).eq("id", inspection.id);
   if (error) throw error;
   return completedAt;
+}
+
+export async function assertInspectionDependenciesSynced(inspectionId: string) {
+  const queue = await getOfflineSyncQueue();
+  if (queue.findings.some(({ record }) => record.inspectionId === inspectionId)) {
+    throw new Error("Related findings or evidence are still pending. Allow synchronization before completing this inspection in Supabase.");
+  }
 }

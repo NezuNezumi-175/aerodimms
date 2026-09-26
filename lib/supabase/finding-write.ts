@@ -1,5 +1,6 @@
 import type { FindingDraft, Inspection } from "@/lib/inspection-data";
 import { createClient } from "@/lib/supabase/client";
+import { insertFindingWithUniqueCode } from "@/lib/supabase/finding-code";
 
 export const EVIDENCE_BUCKET = "finding-evidence";
 
@@ -21,7 +22,7 @@ export async function saveFindingToSupabase(
   const idToken = crypto.randomUUID();
   const findingId = existingFindingId ?? `internal-${idToken}`;
   let sourceFindingId = idToken;
-  let findingCode = `F-MAN-${idToken.slice(0, 8).toUpperCase()}`;
+  let findingCode = "";
   if (existingFindingId) {
     const { data, error } = await supabase.from("findings").select("finding_code, source_finding_id").eq("id", existingFindingId).single();
     if (error) throw error;
@@ -43,7 +44,30 @@ export async function saveFindingToSupabase(
   let serverUpdatedAt: string;
   try {
     const evidenceRows = [];
+    const { data: existingEvidence, error: evidenceReadError } = existingFindingId
+      ? await supabase.from("evidence").select("id, file_name, mime_type, file_size, storage_path").eq("finding_id", findingId)
+      : { data: [], error: null };
+    if (evidenceReadError) throw evidenceReadError;
+    const retainedEvidence = new Set<string>();
     for (const attachment of draft.evidence) {
+      let retained = false;
+      for (const item of existingEvidence ?? []) {
+        if (retainedEvidence.has(item.id) || item.file_name !== attachment.fileName || item.mime_type !== attachment.fileType) continue;
+        if (item.id === attachment.localId) {
+          retained = true;
+        } else if (item.file_size === attachment.fileSize) {
+          const { data: stored, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(item.storage_path);
+          if (error) throw error;
+          const [left, right] = await Promise.all([
+            stored.arrayBuffer().then((bytes) => crypto.subtle.digest("SHA-256", bytes)),
+            attachment.file.arrayBuffer().then((bytes) => crypto.subtle.digest("SHA-256", bytes)),
+          ]);
+          const rightBytes = new Uint8Array(right);
+          retained = new Uint8Array(left).every((byte, index) => byte === rightBytes[index]);
+        }
+        if (retained) { retainedEvidence.add(item.id); break; }
+      }
+      if (retained) continue;
       const evidenceId = crypto.randomUUID();
       const storagePath = `${user.id}/${findingId}/${evidenceId}-${safeFileName(attachment.fileName)}`;
       const { error: uploadError } = await supabase.storage
@@ -68,7 +92,6 @@ export async function saveFindingToSupabase(
       description: draft.description.trim(),
       category: draft.category,
       severity: draft.severity.toUpperCase(),
-      status: "FINDING",
       location_name: draft.area.trim() || relatedInspection?.area || "",
       latitude: gps?.latitude ?? null,
       longitude: gps?.longitude ?? null,
@@ -80,18 +103,19 @@ export async function saveFindingToSupabase(
       updated_at: now,
     };
     const findingResult = existingFindingId
-      ? await supabase.from("findings").update(findingValues).eq("id", findingId).select("id, updated_at").single()
-      : await supabase.from("findings").insert({
+      ? await supabase.from("findings").update(findingValues).eq("id", findingId).select("id, updated_at, finding_code").single()
+      : { data: await insertFindingWithUniqueCode({
           ...findingValues,
           id: findingId,
-          finding_code: findingCode,
           source: "INTERNAL_INSPECTION",
+          status: "FINDING",
           created_by_employee_id: profile?.employee_id ?? null,
           created_at: now,
-        }).select("id, updated_at").single();
+        }), error: null };
     const findingError = findingResult.error;
     if (findingError) throw findingError;
     serverUpdatedAt = findingResult.data.updated_at;
+    findingCode = findingResult.data.finding_code;
 
     if (evidenceRows.length) {
       const { error: evidenceError } = await supabase.from("evidence").insert(evidenceRows);

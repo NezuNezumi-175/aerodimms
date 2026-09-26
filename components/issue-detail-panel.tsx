@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getStoredUser, saveDemoState, type DemoState, type Finding, type IssueHistoryEntry } from "@/lib/demo-data";
 import { createClient } from "@/lib/supabase/client";
+import { useSyncRefresh } from "@/lib/use-sync-refresh";
 import { isDemoMode, loadAppState } from "@/lib/app-data";
 import Image from "next/image";
 import Link from "next/link";
@@ -33,9 +34,12 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   const [signedEvidenceUrls, setSignedEvidenceUrls] = useState<Record<string, string>>({});
   const currentUser = getStoredUser();
 
+  const syncRevision = useSyncRefresh();
   useEffect(() => {
-    loadAppState().then(setState).catch(() => setState(null));
-  }, []);
+    let active = true;
+    loadAppState().then((data) => { if (active) setState(data); }).catch(() => { if (active) setState(null); });
+    return () => { active = false; };
+  }, [syncRevision]);
 
   useEffect(() => {
     if (isDemoMode() || !state || !findingCode) return;

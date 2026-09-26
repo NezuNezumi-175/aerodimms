@@ -14,6 +14,7 @@ import {
   type DemoState,
   type Finding,
 } from "@/lib/demo-data";
+import { useSyncRefresh } from "@/lib/use-sync-refresh";
 import { loadAppState } from "@/lib/app-data";
 
 type AirportStand = {
@@ -77,9 +78,12 @@ export function MapPanel() {
       typeof finding.longitude === "number" && Number.isFinite(finding.longitude),
   );
 
+  const syncRevision = useSyncRefresh();
   useEffect(() => {
-    loadAppState().then(setState).catch(() => setState(null));
-  }, []);
+    let active = true;
+    loadAppState().then((data) => { if (active) setState(data); }).catch(() => { if (active) setState(null); });
+    return () => { active = false; };
+  }, [syncRevision]);
 
   useEffect(() => {
     let cancelled = false;

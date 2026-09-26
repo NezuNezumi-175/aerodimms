@@ -3,7 +3,7 @@ import {
 } from "@/lib/offline-db";
 import { createClient } from "@/lib/supabase/client";
 import {
-  loadSupabaseInspections, markSupabaseInspectionInProgress, saveSupabaseChecklistAnswers,
+  loadSupabaseInspections, markSupabaseInspectionInProgress, saveSupabaseChecklistAnswers, assertInspectionDependenciesSynced,
 } from "@/lib/supabase/inspection-write";
 import { syncOfflineFinding } from "@/lib/supabase/offline-write";
 
@@ -26,6 +26,7 @@ async function processQueue(): Promise<OfflineSyncResult> {
   const { data: profile, error: profileError } = await supabase.from("profiles").select("employee_id").eq("id", user.id).single();
   if (profileError) throw profileError;
   const inspections = await loadSupabaseInspections();
+  let synchronized = false;
   for (const finding of queue.findings) {
     if (!navigator.onLine) break;
     try {
@@ -33,7 +34,8 @@ async function processQueue(): Promise<OfflineSyncResult> {
         throw new Error(`Inspection ${finding.record.inspectionId} is missing or unreadable in Supabase.`);
       }
       const receipt = await syncOfflineFinding(finding, user.id, profile.employee_id);
-      await acknowledgeOfflineFindingSync(finding.record, receipt.id, receipt.serverUpdatedAt);
+      await acknowledgeOfflineFindingSync(finding.record, receipt.id, receipt.serverUpdatedAt, receipt.findingCode);
+      synchronized = true;
     } catch (error) {
       errors.push(`Finding ${finding.record.findingId}: ${errorMessage(error)}`);
     }
@@ -50,6 +52,7 @@ async function processQueue(): Promise<OfflineSyncResult> {
       if (!inspection) throw new Error(`Inspection ${progress.inspectionId} is missing or unreadable in Supabase.`);
       await saveSupabaseChecklistAnswers(inspection, progress.answers);
       if (progress.completionState === "COMPLETED" && inspection.status !== "Completed") {
+        await assertInspectionDependenciesSynced(inspection.id);
         const { error } = await supabase.from("inspections").update({
           status: "Completed", completed_at: progress.updatedAt, updated_at: progress.updatedAt,
         }).eq("id", inspection.id).select("id").single();
@@ -58,11 +61,13 @@ async function processQueue(): Promise<OfflineSyncResult> {
         await markSupabaseInspectionInProgress(inspection);
       }
       await markOfflineProgressSynced(progress);
+      synchronized = true;
     } catch (error) {
       errors.push(`Inspection ${progress.inspectionId}: ${errorMessage(error)}`);
     }
   }
   const pending = await getOfflineSyncQueue();
+  if (synchronized) window.dispatchEvent(new Event("aerodimms:sync-completed"));
   return { errors, pending: Boolean(pending.findings.length || pending.progress.length) };
 }
 
