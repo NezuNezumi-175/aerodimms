@@ -44,7 +44,7 @@ export function DashboardPanel() {
   }, [state]);
 
   if (!state || !dashboard) {
-    return <div className="space-y-4">Loading dashboard…</div>;
+    return <div className="space-y-4"> Loading dashboard…</div>;
   }
 
   const kpis = [
