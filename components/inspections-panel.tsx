@@ -114,6 +114,7 @@ export function InspectionsPanel() {
   const [findingDraft, setFindingDraft] = useState<FindingDraft>(() => createEmptyFindingDraft());
   const [selectedInspectionId, setSelectedInspectionId] = useState("");
   const [findingFormError, setFindingFormError] = useState("");
+  const [isSavingFinding, setIsSavingFinding] = useState(false);
   const [gpsError, setGpsError] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [evidenceError, setEvidenceError] = useState("");
@@ -207,20 +208,23 @@ export function InspectionsPanel() {
     event.currentTarget.value = "";
   };
 
-  const saveFinding = (draft: FindingDraft) => {
+  const saveFinding = async (draft: FindingDraft) => {
     if (!draft.description.trim() || !draft.category || !draft.severity) {
       setFindingFormError("Enter a description, category, and severity before saving.");
       return;
     }
 
+    setIsSavingFinding(true);
     try {
-      const finding = saveManualFinding(draft, relatedInspection);
+      const finding = await saveManualFinding(draft, relatedInspection);
       setDemoState(loadDemoState());
       setFindingFormOpen(false);
       setFindingDraft(createEmptyFindingDraft());
-      setSuccessMessage(`${finding.findingCode} saved to Issues at Stage 1: FINDING.`);
+      setSuccessMessage(`${finding.findingCode} saved locally to Issues at Stage 1: FINDING. Pending sync.`);
     } catch {
-      setFindingFormError("Unable to save this Finding in the local demo store. Please try again.");
+      setFindingFormError("Unable to save this Finding locally. Keep this form open and retry after checking browser storage.");
+    } finally {
+      setIsSavingFinding(false);
     }
   };
 
@@ -285,6 +289,7 @@ export function InspectionsPanel() {
               gpsError={gpsError}
               evidenceError={evidenceError}
               formError={findingFormError}
+              isSaving={isSavingFinding}
               onAddEvidence={addEvidence}
               onRemoveEvidence={(localId) => {
                 setFindingDraft((current) => ({

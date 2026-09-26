@@ -5,11 +5,17 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { useNetworkStatus } from "@/lib/use-network-status";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isOnline = useNetworkStatus();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const connectionLabel = isOnline ? "Online" : "Offline – Data Stored Locally";
+  const connectionColor = isOnline
+    ? "bg-emerald-500/15 text-emerald-300"
+    : "bg-amber-500/15 text-amber-200";
 
   useEffect(() => {
     if (pathname === "/login" || pathname === "/") return;
@@ -84,9 +90,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               })}
             </nav>
 
-            <div className="ml-auto flex shrink-0 items-center gap-2 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              Online
+            <div className={`ml-auto flex shrink-0 items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ${connectionColor}`}>
+              <span className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-400" : "bg-amber-300"}`} />
+              {connectionLabel}
             </div>
           </div>
         </div>
@@ -96,8 +102,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Operations status</p>
               <div className="mt-1 flex items-center gap-2 text-sm text-slate-700">
-                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                Syncing
+                <span className={`inline-flex h-2.5 w-2.5 rounded-full ${isOnline ? "bg-emerald-500" : "bg-amber-500"}`} />
+                {connectionLabel}
               </div>
             </div>
             <div className="flex items-center gap-3">
