@@ -11,11 +11,14 @@ export type FindingStatus =
   | "CLOSED";
 export type SourceType = "INTERNAL_INSPECTION" | "REGULATORY";
 
-export interface UserProfile {
+export interface Profile {
   id: string;
-  employeeId: string;
-  fullName: string;
+  employee_id: string;
+  full_name: string;
   role: Role;
+  airport: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Asset {
@@ -38,8 +41,8 @@ export interface Finding {
   severity: Severity;
   status: FindingStatus;
   locationName: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   assetId?: string;
   airportStandCode?: string;
   assignedTo?: string;
@@ -48,6 +51,11 @@ export interface Finding {
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
+  category?: string;
+  inspectorRemarks?: string;
+  gpsCapturedAt?: string;
+  sourceInspectionId?: string;
+  checklistItemId?: string;
 }
 
 export interface WorkOrder {
@@ -69,6 +77,7 @@ export interface EvidenceItem {
   findingId: string;
   fileName: string;
   storagePath: string;
+  previewUrl?: string;
   mimeType: string;
   uploadedBy: string;
   createdAt: string;
@@ -86,7 +95,6 @@ export interface IssueHistoryEntry {
 }
 
 export interface DemoState {
-  profiles: UserProfile[];
   assets: Asset[];
   findings: Finding[];
   workOrders: WorkOrder[];
@@ -97,12 +105,6 @@ export interface DemoState {
 }
 
 export const STORAGE_KEY = "aerodimms-demo-state";
-
-export const profiles: UserProfile[] = [
-  { id: "u-1", employeeId: "PEN12345", fullName: "Amin Rahman", role: "MAINTENANCE_ENGINEER" },
-  { id: "u-2", employeeId: "PEN23456", fullName: "Nadia Ismail", role: "INSPECTOR" },
-  { id: "u-3", employeeId: "PEN34567", fullName: "Harith Lim", role: "OPERATIONS_MANAGER" },
-];
 
 export const assets: Asset[] = [
   { id: "asset-1", assetCode: "AGL-001", name: "Runway Edge Light 04-A", assetType: "Aeronautical Ground Light", status: "Operational", locationName: "Runway 04", latitude: 5.298179, longitude: 100.274163 },
@@ -118,48 +120,47 @@ export const assets: Asset[] = [
 ];
 
 export const findings: Finding[] = [
-  { id: "f-101", findingCode: "F-101", source: "INTERNAL_INSPECTION", title: "Parking Bay Guidance Light Defect", description: "Critical guidance light failure at Parking Bay 1L requires immediate replacement.", severity: "CRITICAL", status: "IN_PROGRESS", locationName: "Parking Bay 1L", latitude: 33.60118, longitude: 130.44456, assetId: "asset-1", airportStandCode: "1L", assignedTo: "u-1", assignedTeam: "AGL Maintenance", targetCompletionDate: "2026-09-27", createdBy: "u-2", createdAt: "2026-09-15T08:42:00Z", updatedAt: "2026-09-25T15:15:00Z" },
-  { id: "f-102", findingCode: "F-102", source: "INTERNAL_INSPECTION", title: "Parking Bay Surface Marking Faded", description: "Faded surface marking at Parking Bay 2 needs repainting during the next maintenance window.", severity: "HIGH", status: "ASSIGNED", locationName: "Parking Bay 2", latitude: 33.60058, longitude: 130.44513, assetId: "asset-6", airportStandCode: "2", assignedTo: "u-1", assignedTeam: "Pavement Team", targetCompletionDate: "2026-09-29", createdBy: "u-2", createdAt: "2026-09-14T09:05:00Z", updatedAt: "2026-09-25T13:50:00Z" },
-  { id: "f-103", findingCode: "F-103", source: "INTERNAL_INSPECTION", title: "Taxiway Pavement Pothole", description: "Pavement damage detected on Taxiway A requiring maintenance attention.", severity: "CRITICAL", status: "ASSIGNED", locationName: "Taxiway A", latitude: 33.599367, longitude: 130.443789, assignedTeam: "Pavement Team", createdBy: "u-2", createdAt: "2026-09-18T10:15:00Z", updatedAt: "2026-09-25T10:37:00Z" },
-  { id: "f-104", findingCode: "F-104", source: "INTERNAL_INSPECTION", title: "Apron Light Failure", description: "Floodlight near apron stand is not delivering full illumination.", severity: "MEDIUM", status: "FINDING", locationName: "Apron South", latitude: 5.30074, longitude: 100.27974, assetId: "asset-7", createdBy: "u-2", createdAt: "2026-09-16T14:12:00Z", updatedAt: "2026-09-25T11:00:00Z" },
-  { id: "f-105", findingCode: "F-105", source: "INTERNAL_INSPECTION", title: "Runway Sign Damage", description: "Runway signage at holding bay requires replacement.", severity: "MEDIUM", status: "WORK_ORDER", locationName: "Holding Bay", latitude: 5.29712, longitude: 100.27285, assetId: "asset-9", assignedTo: "u-1", assignedTeam: "Signage Team", targetCompletionDate: "2026-09-30", createdBy: "u-2", createdAt: "2026-09-11T07:18:00Z", updatedAt: "2026-09-25T12:25:00Z" },
-  { id: "f-106", findingCode: "F-106", source: "INTERNAL_INSPECTION", title: "Perimeter Fence Crack", description: "Fence segment along northern boundary has a damaged section.", severity: "LOW", status: "ASSIGNED", locationName: "Northern Boundary", latitude: 5.30254, longitude: 100.27262, assetId: "asset-8", assignedTeam: "Security Works", createdBy: "u-2", createdAt: "2026-09-12T15:40:00Z", updatedAt: "2026-09-25T08:04:00Z" },
-  { id: "f-107", findingCode: "F-107", source: "INTERNAL_INSPECTION", title: "Apron Surface Crack", description: "Minor apron surface defect requires further inspection.", severity: "LOW", status: "CLOSED", locationName: "Apron East", latitude: 5.30132, longitude: 100.28191, assetId: "asset-10", assignedTeam: "Pavement Team", createdBy: "u-2", createdAt: "2026-09-08T09:30:00Z", updatedAt: "2026-09-20T17:30:00Z" },
-  { id: "f-108", findingCode: "F-108", source: "REGULATORY", title: "Runway 22 Threshold Marking", description: "Threshold paint visibility needs review.", severity: "MEDIUM", status: "IN_PROGRESS", locationName: "Runway 22", latitude: 5.29577, longitude: 100.27595, assignedTo: "u-1", assignedTeam: "Marking Team", targetCompletionDate: "2026-09-28", createdBy: "u-3", createdAt: "2026-09-20T11:08:00Z", updatedAt: "2026-09-25T09:16:00Z" },
-  { id: "f-109", findingCode: "F-109", source: "INTERNAL_INSPECTION", title: "Taxiway Sign Misalignment", description: "Taxiway sign panel is leaning and needs alignment repair.", severity: "HIGH", status: "FINDING", locationName: "Taxiway A", latitude: 5.29916, longitude: 100.27703, assetId: "asset-6", createdBy: "u-2", createdAt: "2026-09-19T17:25:00Z", updatedAt: "2026-09-25T07:30:00Z" },
-  { id: "f-110", findingCode: "F-110", source: "INTERNAL_INSPECTION", title: "Apron Drainage Check", description: "Water drainage issue near Apron South needs follow-up.", severity: "HIGH", status: "WORK_ORDER", locationName: "Apron South", latitude: 5.30072, longitude: 100.2798, assignedTo: "u-1", assignedTeam: "Civil Works", targetCompletionDate: "2026-09-26", createdBy: "u-2", createdAt: "2026-09-17T13:12:00Z", updatedAt: "2026-09-25T14:55:00Z" },
+  { id: "f-101", findingCode: "F-101", source: "INTERNAL_INSPECTION", title: "Parking Bay Guidance Light Defect", description: "Critical guidance light failure at Parking Bay 1L requires immediate replacement.", severity: "CRITICAL", status: "IN_PROGRESS", locationName: "Parking Bay 1L", latitude: 33.60118, longitude: 130.44456, assetId: "asset-1", airportStandCode: "1L", assignedTo: "PEN12345", assignedTeam: "AGL Maintenance", targetCompletionDate: "2026-09-27", createdBy: "PEN23456", createdAt: "2026-09-15T08:42:00Z", updatedAt: "2026-09-25T15:15:00Z" },
+  { id: "f-102", findingCode: "F-102", source: "INTERNAL_INSPECTION", title: "Parking Bay Surface Marking Faded", description: "Faded surface marking at Parking Bay 2 needs repainting during the next maintenance window.", severity: "HIGH", status: "ASSIGNED", locationName: "Parking Bay 2", latitude: 33.60058, longitude: 130.44513, assetId: "asset-6", airportStandCode: "2", assignedTo: "PEN12345", assignedTeam: "Pavement Team", targetCompletionDate: "2026-09-29", createdBy: "PEN23456", createdAt: "2026-09-14T09:05:00Z", updatedAt: "2026-09-25T13:50:00Z" },
+  { id: "f-103", findingCode: "F-103", source: "INTERNAL_INSPECTION", title: "Taxiway Pavement Pothole", description: "Pavement damage detected on Taxiway A requiring maintenance attention.", severity: "CRITICAL", status: "ASSIGNED", locationName: "Taxiway A", latitude: 33.599367, longitude: 130.443789, assignedTeam: "Pavement Team", createdBy: "PEN23456", createdAt: "2026-09-18T10:15:00Z", updatedAt: "2026-09-25T10:37:00Z" },
+  { id: "f-104", findingCode: "F-104", source: "INTERNAL_INSPECTION", title: "Apron Light Failure", description: "Floodlight near apron stand is not delivering full illumination.", severity: "MEDIUM", status: "FINDING", locationName: "Apron South", latitude: 5.30074, longitude: 100.27974, assetId: "asset-7", createdBy: "PEN23456", createdAt: "2026-09-16T14:12:00Z", updatedAt: "2026-09-25T11:00:00Z" },
+  { id: "f-105", findingCode: "F-105", source: "INTERNAL_INSPECTION", title: "Runway Sign Damage", description: "Runway signage at holding bay requires replacement.", severity: "MEDIUM", status: "WORK_ORDER", locationName: "Holding Bay", latitude: 5.29712, longitude: 100.27285, assetId: "asset-9", assignedTo: "PEN12345", assignedTeam: "Signage Team", targetCompletionDate: "2026-09-30", createdBy: "PEN23456", createdAt: "2026-09-11T07:18:00Z", updatedAt: "2026-09-25T12:25:00Z" },
+  { id: "f-106", findingCode: "F-106", source: "INTERNAL_INSPECTION", title: "Perimeter Fence Crack", description: "Fence segment along northern boundary has a damaged section.", severity: "LOW", status: "ASSIGNED", locationName: "Northern Boundary", latitude: 5.30254, longitude: 100.27262, assetId: "asset-8", assignedTeam: "Security Works", createdBy: "PEN23456", createdAt: "2026-09-12T15:40:00Z", updatedAt: "2026-09-25T08:04:00Z" },
+  { id: "f-107", findingCode: "F-107", source: "INTERNAL_INSPECTION", title: "Apron Surface Crack", description: "Minor apron surface defect requires further inspection.", severity: "LOW", status: "CLOSED", locationName: "Apron East", latitude: 5.30132, longitude: 100.28191, assetId: "asset-10", assignedTeam: "Pavement Team", createdBy: "PEN23456", createdAt: "2026-09-08T09:30:00Z", updatedAt: "2026-09-20T17:30:00Z" },
+  { id: "f-108", findingCode: "F-108", source: "REGULATORY", title: "Runway 22 Threshold Marking", description: "Threshold paint visibility needs review.", severity: "MEDIUM", status: "IN_PROGRESS", locationName: "Runway 22", latitude: 5.29577, longitude: 100.27595, assignedTo: "PEN12345", assignedTeam: "Marking Team", targetCompletionDate: "2026-09-28", createdBy: "PEN34567", createdAt: "2026-09-20T11:08:00Z", updatedAt: "2026-09-25T09:16:00Z" },
+  { id: "f-109", findingCode: "F-109", source: "INTERNAL_INSPECTION", title: "Taxiway Sign Misalignment", description: "Taxiway sign panel is leaning and needs alignment repair.", severity: "HIGH", status: "FINDING", locationName: "Taxiway A", latitude: 5.29916, longitude: 100.27703, assetId: "asset-6", createdBy: "PEN23456", createdAt: "2026-09-19T17:25:00Z", updatedAt: "2026-09-25T07:30:00Z" },
+  { id: "f-110", findingCode: "F-110", source: "INTERNAL_INSPECTION", title: "Apron Drainage Check", description: "Water drainage issue near Apron South needs follow-up.", severity: "HIGH", status: "WORK_ORDER", locationName: "Apron South", latitude: 5.30072, longitude: 100.2798, assignedTo: "PEN12345", assignedTeam: "Civil Works", targetCompletionDate: "2026-09-26", createdBy: "PEN23456", createdAt: "2026-09-17T13:12:00Z", updatedAt: "2026-09-25T14:55:00Z" },
 ];
 
 export const workOrders: WorkOrder[] = [
-  { id: "wo-201", workOrderCode: "WO-201", findingId: "f-101", assignedTo: "u-1", assignedTeam: "AGL Maintenance", correctiveAction: "Replace damaged runway edge light.", targetCompletionDate: "2026-09-27", remarks: "Use replacement kit 04-A.", status: "In Progress", createdAt: "2026-09-15T09:15:00Z", updatedAt: "2026-09-25T15:15:00Z" },
-  { id: "wo-202", workOrderCode: "WO-202", findingId: "f-102", assignedTo: "u-1", assignedTeam: "Pavement Team", correctiveAction: "Repair surface spalling at Taxiway A.", targetCompletionDate: "2026-09-29", status: "Assigned", createdAt: "2026-09-14T10:05:00Z", updatedAt: "2026-09-25T13:50:00Z" },
-  { id: "wo-203", workOrderCode: "WO-203", findingId: "f-105", assignedTo: "u-1", assignedTeam: "Signage Team", correctiveAction: "Replace damaged runway sign and inspect fasteners.", targetCompletionDate: "2026-09-30", status: "In Progress", createdAt: "2026-09-11T08:00:00Z", updatedAt: "2026-09-25T12:25:00Z" },
-  { id: "wo-204", workOrderCode: "WO-204", findingId: "f-110", assignedTo: "u-1", assignedTeam: "Civil Works", correctiveAction: "Clear blocked drain and inspect apron grading.", targetCompletionDate: "2026-09-26", status: "In Progress", createdAt: "2026-09-17T14:00:00Z", updatedAt: "2026-09-25T14:55:00Z" },
-  { id: "wo-205", workOrderCode: "WO-205", findingId: "f-108", assignedTo: "u-1", assignedTeam: "Marking Team", correctiveAction: "Evaluate and reapply threshold markings.", targetCompletionDate: "2026-09-28", status: "In Progress", createdAt: "2026-09-20T12:00:00Z", updatedAt: "2026-09-25T09:16:00Z" },
+  { id: "wo-201", workOrderCode: "WO-201", findingId: "f-101", assignedTo: "PEN12345", assignedTeam: "AGL Maintenance", correctiveAction: "Replace damaged runway edge light.", targetCompletionDate: "2026-09-27", remarks: "Use replacement kit 04-A.", status: "In Progress", createdAt: "2026-09-15T09:15:00Z", updatedAt: "2026-09-25T15:15:00Z" },
+  { id: "wo-202", workOrderCode: "WO-202", findingId: "f-102", assignedTo: "PEN12345", assignedTeam: "Pavement Team", correctiveAction: "Repair surface spalling at Taxiway A.", targetCompletionDate: "2026-09-29", status: "Assigned", createdAt: "2026-09-14T10:05:00Z", updatedAt: "2026-09-25T13:50:00Z" },
+  { id: "wo-203", workOrderCode: "WO-203", findingId: "f-105", assignedTo: "PEN12345", assignedTeam: "Signage Team", correctiveAction: "Replace damaged runway sign and inspect fasteners.", targetCompletionDate: "2026-09-30", status: "In Progress", createdAt: "2026-09-11T08:00:00Z", updatedAt: "2026-09-25T12:25:00Z" },
+  { id: "wo-204", workOrderCode: "WO-204", findingId: "f-110", assignedTo: "PEN12345", assignedTeam: "Civil Works", correctiveAction: "Clear blocked drain and inspect apron grading.", targetCompletionDate: "2026-09-26", status: "In Progress", createdAt: "2026-09-17T14:00:00Z", updatedAt: "2026-09-25T14:55:00Z" },
+  { id: "wo-205", workOrderCode: "WO-205", findingId: "f-108", assignedTo: "PEN12345", assignedTeam: "Marking Team", correctiveAction: "Evaluate and reapply threshold markings.", targetCompletionDate: "2026-09-28", status: "In Progress", createdAt: "2026-09-20T12:00:00Z", updatedAt: "2026-09-25T09:16:00Z" },
 ];
 
 export const evidence: EvidenceItem[] = [
-  { id: "ev-1", findingId: "f-101", fileName: "before-repair.jpg", storagePath: "evidence/f-101/before-repair.jpg", mimeType: "image/jpeg", uploadedBy: "u-2", createdAt: "2026-09-15T09:40:00Z" },
-  { id: "ev-2", findingId: "f-101", fileName: "after-repair.jpg", storagePath: "evidence/f-101/after-repair.jpg", mimeType: "image/jpeg", uploadedBy: "u-1", createdAt: "2026-09-25T15:10:00Z" },
-  { id: "ev-3", findingId: "f-103", fileName: "wildlife-record.pdf", storagePath: "evidence/f-103/wildlife-record.pdf", mimeType: "application/pdf", uploadedBy: "u-3", createdAt: "2026-09-18T10:45:00Z" },
-  { id: "ev-4", findingId: "f-110", fileName: "drainage-check.jpg", storagePath: "evidence/f-110/drainage-check.jpg", mimeType: "image/jpeg", uploadedBy: "u-1", createdAt: "2026-09-17T14:25:00Z" },
-  { id: "ev-5", findingId: "f-105", fileName: "signage-before.jpg", storagePath: "evidence/f-105/signage-before.jpg", mimeType: "image/jpeg", uploadedBy: "u-2", createdAt: "2026-09-11T08:30:00Z" },
+  { id: "ev-1", findingId: "f-101", fileName: "before-repair.jpg", storagePath: "evidence/f-101/before-repair.jpg", mimeType: "image/jpeg", uploadedBy: "PEN23456", createdAt: "2026-09-15T09:40:00Z" },
+  { id: "ev-2", findingId: "f-101", fileName: "after-repair.jpg", storagePath: "evidence/f-101/after-repair.jpg", mimeType: "image/jpeg", uploadedBy: "PEN12345", createdAt: "2026-09-25T15:10:00Z" },
+  { id: "ev-3", findingId: "f-103", fileName: "wildlife-record.pdf", storagePath: "evidence/f-103/wildlife-record.pdf", mimeType: "application/pdf", uploadedBy: "PEN34567", createdAt: "2026-09-18T10:45:00Z" },
+  { id: "ev-4", findingId: "f-110", fileName: "drainage-check.jpg", storagePath: "evidence/f-110/drainage-check.jpg", mimeType: "image/jpeg", uploadedBy: "PEN12345", createdAt: "2026-09-17T14:25:00Z" },
+  { id: "ev-5", findingId: "f-105", fileName: "signage-before.jpg", storagePath: "evidence/f-105/signage-before.jpg", mimeType: "image/jpeg", uploadedBy: "PEN23456", createdAt: "2026-09-11T08:30:00Z" },
 ];
 
 export const issueHistory: IssueHistoryEntry[] = [
-  { id: "h-1", findingId: "f-101", userId: "u-2", action: "Finding created", previousStatus: "", newStatus: "FINDING", createdAt: "2026-09-15T08:42:00Z" },
-  { id: "h-2", findingId: "f-101", userId: "u-2", action: "Finding assigned to AGL Team", previousStatus: "FINDING", newStatus: "ASSIGNED", createdAt: "2026-09-15T09:25:00Z" },
-  { id: "h-3", findingId: "f-101", userId: "u-1", action: "Work Order WO-201 created", previousStatus: "ASSIGNED", newStatus: "WORK_ORDER", createdAt: "2026-09-15T09:42:00Z" },
-  { id: "h-4", findingId: "f-101", userId: "u-1", action: "Corrective action started", previousStatus: "WORK_ORDER", newStatus: "IN_PROGRESS", createdAt: "2026-09-16T10:30:00Z" },
-  { id: "h-5", findingId: "f-101", userId: "u-1", action: "Evidence uploaded", previousStatus: "IN_PROGRESS", newStatus: "IN_PROGRESS", remarks: "after-repair.jpg", createdAt: "2026-09-25T15:10:00Z" },
-  { id: "h-6", findingId: "f-101", userId: "u-3", action: "Submitted for verification", previousStatus: "IN_PROGRESS", newStatus: "PENDING_VERIFICATION", createdAt: "2026-09-25T15:35:00Z" },
-  { id: "h-7", findingId: "f-103", userId: "u-3", action: "Finding created", previousStatus: "", newStatus: "FINDING", createdAt: "2026-09-18T10:15:00Z" },
-  { id: "h-8", findingId: "f-103", userId: "u-3", action: "Submitted for verification", previousStatus: "IN_PROGRESS", newStatus: "PENDING_VERIFICATION", createdAt: "2026-09-25T10:37:00Z" },
-  { id: "h-9", findingId: "f-107", userId: "u-1", action: "Finding closed", previousStatus: "PENDING_VERIFICATION", newStatus: "CLOSED", createdAt: "2026-09-20T17:30:00Z" },
+  { id: "h-1", findingId: "f-101", userId: "PEN23456", action: "Finding created", previousStatus: "", newStatus: "FINDING", createdAt: "2026-09-15T08:42:00Z" },
+  { id: "h-2", findingId: "f-101", userId: "PEN23456", action: "Finding assigned to AGL Team", previousStatus: "FINDING", newStatus: "ASSIGNED", createdAt: "2026-09-15T09:25:00Z" },
+  { id: "h-3", findingId: "f-101", userId: "PEN12345", action: "Work Order WO-201 created", previousStatus: "ASSIGNED", newStatus: "WORK_ORDER", createdAt: "2026-09-15T09:42:00Z" },
+  { id: "h-4", findingId: "f-101", userId: "PEN12345", action: "Corrective action started", previousStatus: "WORK_ORDER", newStatus: "IN_PROGRESS", createdAt: "2026-09-16T10:30:00Z" },
+  { id: "h-5", findingId: "f-101", userId: "PEN12345", action: "Evidence uploaded", previousStatus: "IN_PROGRESS", newStatus: "IN_PROGRESS", remarks: "after-repair.jpg", createdAt: "2026-09-25T15:10:00Z" },
+  { id: "h-6", findingId: "f-101", userId: "PEN34567", action: "Submitted for verification", previousStatus: "IN_PROGRESS", newStatus: "PENDING_VERIFICATION", createdAt: "2026-09-25T15:35:00Z" },
+  { id: "h-7", findingId: "f-103", userId: "PEN34567", action: "Finding created", previousStatus: "", newStatus: "FINDING", createdAt: "2026-09-18T10:15:00Z" },
+  { id: "h-8", findingId: "f-103", userId: "PEN34567", action: "Submitted for verification", previousStatus: "IN_PROGRESS", newStatus: "PENDING_VERIFICATION", createdAt: "2026-09-25T10:37:00Z" },
+  { id: "h-9", findingId: "f-107", userId: "PEN12345", action: "Finding closed", previousStatus: "PENDING_VERIFICATION", newStatus: "CLOSED", createdAt: "2026-09-20T17:30:00Z" },
 ];
 
 export const defaultState: DemoState = {
-  profiles,
   assets,
   findings,
   workOrders,
@@ -204,6 +205,13 @@ export function loadDemoState(): DemoState {
 
   try {
     const storedState = JSON.parse(raw) as DemoState;
+    const employeeIdFor = (value?: string) => {
+      if (value === "u-1") return "PEN12345";
+      if (value === "u-2") return "PEN23456";
+      if (value === "u-3") return "PEN34567";
+      return value;
+    };
+
     return {
       ...storedState,
       completedInspectionRecords: storedState.completedInspectionRecords ?? [],
@@ -213,21 +221,37 @@ export function loadDemoState(): DemoState {
           (item) => item.id === finding.id && (item.airportStandCode || item.id === "f-103"),
         );
 
-        return demoFinding
-          ? {
-              ...finding,
-              title: demoFinding.title,
-              description: demoFinding.description,
-              locationName: demoFinding.locationName,
-              severity: demoFinding.severity,
-              status: demoFinding.status,
-              assignedTeam: demoFinding.assignedTeam,
-              airportStandCode: demoFinding.airportStandCode,
-              latitude: demoFinding.latitude,
-              longitude: demoFinding.longitude,
-            }
-          : finding;
+        return {
+          ...finding,
+          ...(demoFinding
+            ? {
+                title: demoFinding.title,
+                description: demoFinding.description,
+                locationName: demoFinding.locationName,
+                severity: demoFinding.severity,
+                status: demoFinding.status,
+                assignedTeam: demoFinding.assignedTeam,
+                airportStandCode: demoFinding.airportStandCode,
+                latitude: demoFinding.latitude,
+                longitude: demoFinding.longitude,
+              }
+            : {}),
+          assignedTo: employeeIdFor(finding.assignedTo),
+          createdBy: employeeIdFor(finding.createdBy),
+        };
       }),
+      workOrders: storedState.workOrders.map((workOrder) => ({
+        ...workOrder,
+        assignedTo: employeeIdFor(workOrder.assignedTo),
+      })),
+      evidence: storedState.evidence.map((item) => ({
+        ...item,
+        uploadedBy: employeeIdFor(item.uploadedBy) ?? "",
+      })),
+      issueHistory: storedState.issueHistory.map((entry) => ({
+        ...entry,
+        userId: employeeIdFor(entry.userId) ?? "",
+      })),
     };
   } catch {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
@@ -241,20 +265,20 @@ export function saveDemoState(state: DemoState) {
   }
 }
 
-export function getStoredUser() {
+export function getStoredUser(): Profile | null {
   if (typeof window === "undefined") return null;
 
   const raw = window.localStorage.getItem("aerodimms-user");
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as UserProfile;
+    return JSON.parse(raw) as Profile;
   } catch {
     return null;
   }
 }
 
-export function setStoredUser(user: UserProfile | null) {
+export function setStoredUser(user: Profile | null) {
   if (typeof window === "undefined") return;
 
   if (!user) {

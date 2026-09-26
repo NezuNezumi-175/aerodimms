@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { useNetworkStatus } from "@/lib/use-network-status";
+import { setStoredUser } from "@/lib/demo-data";
+import { isDemoMode } from "@/lib/app-data";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -18,7 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : "bg-amber-500/15 text-amber-200";
 
   useEffect(() => {
-    if (pathname === "/login" || pathname === "/") return;
+    if (pathname === "/login" || pathname === "/" || isDemoMode()) return;
 
     let active = true;
     let supabase: ReturnType<typeof createClient>;
@@ -49,6 +51,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const logout = () => {
+    setStoredUser(null);
+    if (isDemoMode()) {
+      router.replace("/dashboard");
+      return;
+    }
+
     createClient().auth.signOut().finally(() => {
       setCurrentUser(null);
       router.replace("/login");

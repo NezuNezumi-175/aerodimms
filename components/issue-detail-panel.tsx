@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getStoredUser, saveDemoState, type DemoState, type Finding, type IssueHistoryEntry } from "@/lib/demo-data";
+import { createClient } from "@/lib/supabase/client";
+import { isDemoMode, loadAppState } from "@/lib/app-data";
 import Image from "next/image";
 import Link from "next/link";
-import { getStoredUser, loadDemoState, saveDemoState, type DemoState, type Finding, type IssueHistoryEntry } from "@/lib/demo-data";
 import type { InternalInspectionFinding } from "@/lib/inspection-data";
 import { getOfflineEvidenceForFinding } from "@/lib/offline-db";
 
@@ -17,6 +19,7 @@ type IssueEvidenceDisplay = {
   mimeType: string;
   fileSize?: number;
   previewUrl?: string;
+  storagePath?: string;
 };
 type OfflineEvidencePreview = IssueEvidenceDisplay & { localId: string };
 
@@ -24,17 +27,31 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   const [state, setState] = useState<DemoState | null>(null);
   const [offlineEvidence, setOfflineEvidence] = useState<OfflineEvidencePreview[]>([]);
   const [offlineEvidenceError, setOfflineEvidenceError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [signedEvidenceUrls, setSignedEvidenceUrls] = useState<Record<string, string>>({});
   const currentUser = getStoredUser();
 
   useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (active) setState(loadDemoState());
-    });
-    return () => {
-      active = false;
-    };
+    loadAppState().then(setState).catch(() => setState(null));
   }, []);
+
+  useEffect(() => {
+    if (isDemoMode() || !state || !findingCode) return;
+    let cancelled = false;
+    const rows = state.evidence.filter((item) => {
+      const target = state.findings.find((finding) => finding.findingCode === findingCode || finding.id === findingCode);
+      return target?.id === item.findingId;
+    });
+    Promise.all(rows.map(async (item) => {
+      const { data, error } = await createClient().storage.from("finding-evidence").createSignedUrl(item.storagePath, 3600);
+      return error ? null : [item.id, data.signedUrl] as const;
+    })).then((results) => {
+      if (!cancelled) setSignedEvidenceUrls(Object.fromEntries(results.filter((item): item is readonly [string, string] => item !== null)));
+    });
+    return () => { cancelled = true; };
+  }, [findingCode, state]);
 
   const finding = useMemo(() => {
     if (!state) return null;
@@ -110,8 +127,11 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
         previewUrl: offlineEvidence.find((offlineItem) => offlineItem.localId === item.localId)?.previewUrl ?? item.previewUrl,
       }));
     }
-    return state.evidence.filter((item) => item.findingId === finding.id);
-  }, [finding, offlineEvidence, state]);
+    return state.evidence.filter((item) => item.findingId === finding.id).map((item) => ({
+      ...item,
+      previewUrl: signedEvidenceUrls[item.id],
+    }));
+  }, [finding, offlineEvidence, signedEvidenceUrls, state]);
 
   const history = useMemo(() => {
     if (!state || !finding) return [];
@@ -120,8 +140,34 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [finding, state]);
 
-  const updateFindingStatus = (nextStatus: string, action: string, remarks?: string) => {
-    if (!state || !finding || "sourceFindingId" in finding) return;
+  const demoMode = isDemoMode();
+
+  const updateFindingStatus = async (nextStatus: string, action: string, remarks?: string) => {
+    if (!state || !finding || isSaving || "sourceFindingId" in finding) return;
+    setIsSaving(true);
+    setSaveError("");
+    setSaveMessage("");
+
+    if (!isDemoMode()) {
+      try {
+        const supabase = createClient();
+        const { error } = await supabase.rpc("update_finding_status", {
+          p_finding_id: finding.id,
+          p_new_status: nextStatus,
+          p_action: action,
+          p_remarks: remarks ?? null,
+        });
+        if (error) throw new Error(error.message);
+        const nextState = await loadAppState();
+        setState(nextState);
+        setSaveMessage("Saved to Supabase.");
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : "Could not save this update to Supabase.");
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
 
     const nextFinding: Finding = {
       ...finding,
@@ -132,7 +178,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
     const nextEntry: IssueHistoryEntry = {
       id: `h-${Math.random().toString(36).slice(2, 9)}`,
       findingId: finding.id,
-      userId: currentUser?.id ?? "u-1",
+      userId: currentUser?.employee_id ?? "PEN12345",
       action,
       previousStatus: finding.status,
       newStatus: nextStatus,
@@ -148,10 +194,12 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
 
     saveDemoState(nextState);
     setState(nextState);
+    setSaveMessage("Saved in this browser's demo data.");
+    setIsSaving(false);
   };
 
   const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!state || !finding || "sourceFindingId" in finding) return;
+    if (!isDemoMode() || !state || !finding) return;
 
     const file = event.target.files?.[0];
     if (!file) return;
@@ -162,7 +210,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
       fileName: file.name,
       storagePath: `evidence/${finding.id}/${file.name}`,
       mimeType: file.type || "application/octet-stream",
-      uploadedBy: currentUser?.id ?? "u-1",
+      uploadedBy: currentUser?.employee_id ?? "PEN12345",
       createdAt: new Date().toISOString(),
     };
 
@@ -174,7 +222,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
         {
           id: `h-${Math.random().toString(36).slice(2, 9)}`,
           findingId: finding.id,
-          userId: currentUser?.id ?? "u-1",
+          userId: currentUser?.employee_id ?? "PEN12345",
           action: "Evidence uploaded",
           previousStatus: finding.status,
           newStatus: finding.status,
@@ -214,7 +262,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   })();
   const coordinates = internalFinding?.gps
     ? `${internalFinding.gps.latitude.toFixed(5)}, ${internalFinding.gps.longitude.toFixed(5)}`
-    : finding.latitude !== undefined && finding.longitude !== undefined
+    : finding.latitude !== null && finding.latitude !== undefined && finding.longitude !== null && finding.longitude !== undefined
       ? `${finding.latitude.toFixed(5)}, ${finding.longitude.toFixed(5)}`
       : "Not captured";
 
@@ -244,7 +292,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
             <p><span className="font-semibold text-slate-800">Current Status:</span> {finding.status}</p>
             <p><span className="font-semibold text-slate-800">Assigned Team:</span> {finding.assignedTeam ?? "Unassigned"}</p>
             <p><span className="font-semibold text-slate-800">GPS Location:</span> {coordinates}</p>
-            {internalFinding?.gps ? <p><span className="font-semibold text-slate-800">GPS Captured:</span> {new Date(internalFinding.gps.capturedAt).toLocaleString()}</p> : null}
+            {internalFinding?.gps ? <p><span className="font-semibold text-slate-800">GPS Captured:</span> {new Date(internalFinding.gps.capturedAt).toLocaleString()}</p> : "gpsCapturedAt" in finding && finding.gpsCapturedAt ? <p><span className="font-semibold text-slate-800">GPS Captured:</span> {new Date(finding.gpsCapturedAt).toLocaleString()}</p> : null}
             <p><span className="font-semibold text-slate-800">Target Completion:</span> {finding.targetCompletionDate ?? "Not set"}</p>
           </div>
         </div>
@@ -302,9 +350,10 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
               <button
                 type="button"
                 onClick={() => updateFindingStatus(primaryAction.nextStatus, primaryAction.action, primaryAction.action)}
+                disabled={isSaving}
                 className="mt-3 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700"
               >
-                {primaryAction.label}
+                {isSaving ? "Saving…" : primaryAction.label}
               </button>
             ) : (
               <div className="mt-3 rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-600">Closed</div>
@@ -315,6 +364,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
                 <button
                   type="button"
                   onClick={() => updateFindingStatus("CLOSED", "Verify and close", "Accepted by verifier")}
+                  disabled={isSaving}
                   className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
                 >
                   Verify & Close
@@ -322,12 +372,15 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
                 <button
                   type="button"
                   onClick={() => updateFindingStatus("IN_PROGRESS", "Return for further action", "Returned for additional work")}
+                  disabled={isSaving}
                   className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100"
                 >
                   Return for Further Action
                 </button>
               </div>
             ) : null}
+            {saveError ? <p role="alert" className="text-sm text-red-700">{saveError}</p> : null}
+            {saveMessage ? <p role="status" className="text-sm text-emerald-700">{saveMessage}</p> : null}
           </div>
         </div>
 
@@ -352,7 +405,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
             ) : (
               <p className="text-sm text-slate-500">No evidence uploaded.</p>
             )}
-            {!internalFinding ? (
+            {demoMode ? (
               <label className="mt-3 inline-flex cursor-pointer rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100">
                 Upload Evidence
                 <input type="file" className="hidden" onChange={handleUpload} />

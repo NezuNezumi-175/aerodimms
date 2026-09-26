@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { setStoredUser, type Profile } from "@/lib/demo-data";
 
 export function LoginPanel() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export function LoginPanel() {
 
     try {
       const supabase = createClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
@@ -29,6 +30,20 @@ export function LoginPanel() {
         );
         return;
       }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, employee_id, full_name, role, airport, created_at, updated_at")
+        .eq("id", authData.user.id)
+        .single();
+
+      if (profileError || !profile) {
+        await supabase.auth.signOut();
+        setError("Your account does not have an AeroDIMMS profile.");
+        return;
+      }
+
+      setStoredUser(profile as Profile);
 
       router.replace("/dashboard");
       router.refresh();

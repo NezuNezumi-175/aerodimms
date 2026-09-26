@@ -5,11 +5,13 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { FindingForm } from "@/components/finding-form";
 import { createFindingEvidence, requestFindingGps } from "@/lib/finding-form";
 import { loadDemoState, type DemoState } from "@/lib/demo-data";
+import { isDemoMode } from "@/lib/app-data";
 import { saveManualFinding } from "@/lib/inspection-workflow";
+import { saveFindingToSupabase } from "@/lib/supabase/finding-write";
+import { loadSupabaseInspections } from "@/lib/supabase/inspection-write";
+import { useNetworkStatus } from "@/lib/use-network-status";
 import {
-  completedInspections,
-  inProgressInspections,
-  scheduledInspections,
+  allInspections,
   type FindingDraft,
   type Inspection,
   type InspectionStatus,
@@ -17,6 +19,16 @@ import {
 
 function createEmptyFindingDraft(area = ""): FindingDraft {
   return { description: "", category: "", severity: "", area, remarks: "", gps: null, evidence: [] };
+}
+
+function getSaveErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    const details = "details" in error && typeof error.details === "string" ? error.details : "";
+    const hint = "hint" in error && typeof error.hint === "string" ? error.hint : "";
+    return [error.message, details, hint].filter(Boolean).join(" — ");
+  }
+  return "Please check the Supabase configuration and try again.";
 }
 
 const statusStyles: Record<InspectionStatus, string> = {
@@ -110,6 +122,8 @@ function InspectionSection({
 
 export function InspectionsPanel() {
   const [demoState, setDemoState] = useState<DemoState | null>(null);
+  const [supabaseInspections, setSupabaseInspections] = useState<Inspection[] | null>(null);
+  const [inspectionLoadError, setInspectionLoadError] = useState("");
   const [findingFormOpen, setFindingFormOpen] = useState(false);
   const [findingDraft, setFindingDraft] = useState<FindingDraft>(() => createEmptyFindingDraft());
   const [selectedInspectionId, setSelectedInspectionId] = useState("");
@@ -120,6 +134,7 @@ export function InspectionsPanel() {
   const [evidenceError, setEvidenceError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const objectUrlsRef = useRef<Set<string>>(new Set());
+  const isOnline = useNetworkStatus();
 
   useEffect(() => {
     let active = true;
@@ -130,6 +145,25 @@ export function InspectionsPanel() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (isDemoMode()) return;
+    if (!isOnline) {
+      setSupabaseInspections(allInspections);
+      setInspectionLoadError("");
+      return;
+    }
+    let active = true;
+    loadSupabaseInspections().then((items) => {
+      if (active) setSupabaseInspections(items);
+    }).catch((error) => {
+      if (active) {
+        setInspectionLoadError(error instanceof Error ? error.message : "Could not load inspections from Supabase.");
+        setSupabaseInspections([]);
+      }
+    });
+    return () => { active = false; };
+  }, [isOnline]);
 
   useEffect(() => {
     const retainedUrls = new Set(findingDraft.evidence.map((attachment) => attachment.previewUrl));
@@ -149,19 +183,20 @@ export function InspectionsPanel() {
     [],
   );
 
-  if (!demoState) {
+  if (!demoState || (!isDemoMode() && supabaseInspections === null)) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspections…</div>;
   }
 
+  const inspectionRows = isDemoMode() || !isOnline ? allInspections : supabaseInspections ?? [];
   const completedRecords = demoState.completedInspectionRecords ?? [];
   const completedIds = new Set(completedRecords.map((record) => record.inspection.id));
-  const activeScheduled = scheduledInspections.filter((inspection) => !completedIds.has(inspection.id));
-  const activeInProgress = inProgressInspections.filter((inspection) => !completedIds.has(inspection.id));
+  const activeScheduled = inspectionRows.filter((inspection) => inspection.status === "Scheduled" && !completedIds.has(inspection.id));
+  const activeInProgress = inspectionRows.filter((inspection) => inspection.status === "In Progress" && !completedIds.has(inspection.id));
   const completedHistory = [
     ...completedRecords.map((record) => record.inspection),
-    ...completedInspections.filter((inspection) => !completedIds.has(inspection.id)),
+    ...inspectionRows.filter((inspection) => inspection.status === "Completed" && !completedIds.has(inspection.id)),
   ];
-  const viewableCompletedIds = new Set(completedRecords.map((record) => record.inspection.id));
+  const viewableCompletedIds = new Set(completedHistory.map((inspection) => inspection.id));
   const relatedInspections = [...activeInProgress, ...activeScheduled];
   const relatedInspection = relatedInspections.find((inspection) => inspection.id === selectedInspectionId);
 
@@ -204,11 +239,12 @@ export function InspectionsPanel() {
     if (attachments.length) {
       setFindingDraft((current) => ({ ...current, evidence: [...current.evidence, ...attachments] }));
     }
-    setEvidenceError(rejectedCount ? "Only JPG, PNG, and WebP images can be attached." : "");
+    setEvidenceError(rejectedCount ? "Use JPG, PNG, or WebP images up to 10 MB each." : "");
     event.currentTarget.value = "";
   };
 
   const saveFinding = async (draft: FindingDraft) => {
+    if (isSavingFinding) return;
     if (!draft.description.trim() || !draft.category || !draft.severity) {
       setFindingFormError("Enter a description, category, and severity before saving.");
       return;
@@ -216,13 +252,19 @@ export function InspectionsPanel() {
 
     setIsSavingFinding(true);
     try {
-      const finding = await saveManualFinding(draft, relatedInspection);
-      setDemoState(loadDemoState());
+      const finding = isDemoMode() || !isOnline
+        ? await saveManualFinding(draft, relatedInspection)
+        : await saveFindingToSupabase(draft, relatedInspection);
+      if (isDemoMode() || !isOnline) setDemoState(loadDemoState());
       setFindingFormOpen(false);
       setFindingDraft(createEmptyFindingDraft());
-      setSuccessMessage(`${finding.findingCode} saved locally to Issues at Stage 1: FINDING. Pending sync.`);
-    } catch {
-      setFindingFormError("Unable to save this Finding locally. Keep this form open and retry after checking browser storage.");
+      setSuccessMessage(isDemoMode()
+        ? `${finding.findingCode} saved locally.`
+        : !isOnline
+          ? `${finding.findingCode} saved locally. Pending sync.`
+          : `${finding.findingCode} saved to Supabase with its GPS and evidence.`);
+    } catch (error) {
+      setFindingFormError(`Unable to save this Finding: ${getSaveErrorMessage(error)}`);
     } finally {
       setIsSavingFinding(false);
     }
@@ -261,6 +303,8 @@ export function InspectionsPanel() {
         </div>
       </div>
 
+      {inspectionLoadError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">Could not load inspections from Supabase: {inspectionLoadError}</p> : null}
+
       {successMessage ? (
         <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
           {successMessage}
@@ -283,13 +327,13 @@ export function InspectionsPanel() {
               draft={findingDraft}
               onDraftChange={updateFindingDraft}
               onSave={saveFinding}
+              isSaving={isSavingFinding}
               onCancel={cancelFinding}
               onCaptureGps={captureGps}
               gpsLoading={gpsLoading}
               gpsError={gpsError}
               evidenceError={evidenceError}
               formError={findingFormError}
-              isSaving={isSavingFinding}
               onAddEvidence={addEvidence}
               onRemoveEvidence={(localId) => {
                 setFindingDraft((current) => ({

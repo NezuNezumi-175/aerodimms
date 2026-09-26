@@ -8,13 +8,13 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 maplibregl.config.WORKER_URL = "/maplibre-gl-worker.mjs";
 import {
-  loadDemoState,
   openFindingStatuses,
   severityColors,
   type Asset,
   type DemoState,
   type Finding,
 } from "@/lib/demo-data";
+import { loadAppState } from "@/lib/app-data";
 
 type AirportStand = {
   code: string;
@@ -71,15 +71,14 @@ export function MapPanel() {
 
     return [...state.findings, ...manualFindings];
   }, [state]);
+  const findingsWithGps = mapFindings.filter(
+    (finding): finding is Finding & { latitude: number; longitude: number } =>
+      typeof finding.latitude === "number" && Number.isFinite(finding.latitude) &&
+      typeof finding.longitude === "number" && Number.isFinite(finding.longitude),
+  );
 
   useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (active) setState(loadDemoState());
-    });
-    return () => {
-      active = false;
-    };
+    loadAppState().then(setState).catch(() => setState(null));
   }, []);
 
   useEffect(() => {
@@ -213,7 +212,7 @@ export function MapPanel() {
     }
 
     if (showFindings) {
-      mapFindings
+      findingsWithGps
         .filter((finding) => openFindingStatuses.has(finding.status))
         .forEach((finding) => {
           const severityColor = finding.severity === "CRITICAL" ? severityColors.CRITICAL : "#2563eb";
@@ -249,7 +248,7 @@ export function MapPanel() {
     return () => {
       markers.forEach((marker) => marker.remove());
     };
-  }, [mapFindings, state, showAssets, showFindings]);
+  }, [findingsWithGps, state, showAssets, showFindings]);
 
   const searchableRecords = useMemo(() => {
     if (!state) return [] as Array<{ value: string; type: "asset" | "finding"; item: Asset | Finding }>;
@@ -300,7 +299,11 @@ export function MapPanel() {
     setSelectedStand(null);
     setSelectedAsset(null);
     setSelectedFinding(finding);
-    mapRef.current.flyTo({ center: [finding.longitude, finding.latitude], zoom: 15 });
+    if (typeof finding.longitude === "number" && typeof finding.latitude === "number") {
+      mapRef.current.flyTo({ center: [finding.longitude, finding.latitude], zoom: 15 });
+    } else {
+      setErrorMessage("This finding has no GPS coordinates.");
+    }
   };
 
   return (
@@ -374,8 +377,8 @@ export function MapPanel() {
               <p className="mt-1 text-sm text-slate-600">{selectedFinding.description}</p>
               <div className="mt-3 space-y-1.5 text-sm text-slate-600">
                 <p><span className="font-semibold text-slate-800">Location:</span> {selectedFinding.locationName}</p>
-                <p><span className="font-semibold text-slate-800">Latitude:</span> {selectedFinding.latitude.toFixed(6)}</p>
-                <p><span className="font-semibold text-slate-800">Longitude:</span> {selectedFinding.longitude.toFixed(6)}</p>
+                <p><span className="font-semibold text-slate-800">Latitude:</span> {selectedFinding.latitude?.toFixed(6) ?? "Not captured"}</p>
+                <p><span className="font-semibold text-slate-800">Longitude:</span> {selectedFinding.longitude?.toFixed(6) ?? "Not captured"}</p>
                 <p><span className="font-semibold text-slate-800">Severity:</span> {selectedFinding.severity}</p>
                 <p><span className="font-semibold text-slate-800">Status:</span> {selectedFinding.status}</p>
                 {selectedFinding.assignedTo ? <p><span className="font-semibold text-slate-800">Assigned Person:</span> {selectedFinding.assignedTo}</p> : null}

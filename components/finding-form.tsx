@@ -256,7 +256,7 @@ export function FindingForm({
             Cancel
           </button>
           <button type="submit" disabled={isSaving} className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:cursor-wait disabled:opacity-60">
-            {isSaving ? "Saving locally…" : "Save Finding"}
+            {isSaving ? "Saving…" : "Save Finding"}
           </button>
         </div>
       </form>

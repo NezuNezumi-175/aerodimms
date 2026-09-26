@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { loadDemoState, type DemoState } from "@/lib/demo-data";
+import { loadAppState } from "@/lib/app-data";
+import type { DemoState } from "@/lib/demo-data";
 
 function FilterSelect({
   label,
@@ -42,13 +43,7 @@ export function IssuesPanel() {
   const [state, setState] = useState<DemoState | null>(null);
 
   useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (active) setState(loadDemoState());
-    });
-    return () => {
-      active = false;
-    };
+    loadAppState().then(setState).catch(() => setState(null));
   }, []);
 
   const allFindings = useMemo(() => {

@@ -1,0 +1,19 @@
+# Supabase demo data import
+
+These CSV files migrate the operational data from `lib/demo-data.ts`. `profiles.csv` maps the three demo employee IDs to the provided existing Supabase Auth users. The UUIDs, names, roles, airport, and timestamps are filled in. Import these rows only if those Auth users do not already have rows in `public.profiles`; never create Auth users solely to satisfy this CSV. For operational CSVs, replace `PEN12345`, `PEN23456`, and `PEN34567` with the corresponding `employee_id` values if the profile IDs differ. Keep each replacement consistent across all operational CSVs and the local demo data if you change the mappings. Any blank employee reference stays blank.
+
+## Supabase steps
+
+1. In Supabase Dashboard, open **SQL Editor**. Run `supabase/profiles.sql` if `public.profiles` has not been created yet. Existing profiles are not overwritten.
+2. Run `supabase/schema.sql` in SQL Editor to create the five operational tables and read-only authenticated access policies.
+3. Run `supabase/inspection-schema.sql` to add inspection execution tables and fields to `findings`.
+4. In **Table Editor**, import `inspections.csv` into `inspections`, then `inspection_checklist_answers.csv` into `inspection_checklist_answers`. The inspection CSV contains the eight mock inspections from `lib/inspection-data.ts`. Inspector employee IDs are blank because the mock names are not linked to Supabase profiles. Checklist answers are empty because the source code defines checklist items but no saved answers.
+5. Import `assets.csv` into `assets`.
+6. Import `findings.csv` into `findings`, then `work_orders.csv` into `work_orders`, `evidence.csv` into `evidence`, and `issue_history.csv` into `issue_history`. Match CSV headers to the identically named table columns. Import in this order to satisfy foreign keys.
+7. Review row counts (8 inspections, 0 checklist answers, 10 assets, 10 findings, 5 work orders, 5 evidence rows, 9 history rows) and confirm employee references resolve to existing profiles. Do not import `profiles.csv` until it is filled for real Auth users who do not yet have profile rows.
+
+The existing demo `evidence.csv` contains metadata and placeholder paths only; it does not upload those old sample files.
+
+When `NEXT_PUBLIC_DEMO_MODE=false`, the Inspections page reads rows from `inspections`; opening a scheduled item moves it to `In Progress`. **Save & Continue** upserts answered checklist rows, **Complete Inspection** stores the answers and completion timestamp, and checklist Finding saves write to `findings`.
+
+The online Inspections overview **+ Create Finding** form uploads JPG, PNG, and WebP files to the private `finding-evidence` Storage bucket, then stores the bucket path in `evidence.storage_path`. Paths use `{auth-user-uuid}/{finding-id}/{evidence-uuid}-{safe-file-name}`. GPS coordinates and capture time are stored in `findings.latitude`, `findings.longitude`, and `findings.gps_captured_at`; all three stay null when GPS was not captured. Finding photos also store `file_size` in `evidence`. These flows require a signed-in user and the latest `inspection-schema.sql` to have been run, including its Storage policies. Demo mode continues saving to browser local storage.

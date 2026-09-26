@@ -3,13 +3,13 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getStoredUser } from "@/lib/demo-data";
+import { isDemoMode } from "@/lib/app-data";
 
 export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
-    const user = getStoredUser();
-    router.replace(user ? "/dashboard" : "/login");
+    router.replace(isDemoMode() || getStoredUser() ? "/dashboard" : "/login");
   }, [router]);
 
   return (
