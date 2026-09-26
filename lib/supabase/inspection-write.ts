@@ -122,8 +122,10 @@ export async function saveSupabaseChecklistAnswers(inspection: Inspection, answe
 }
 
 export async function markSupabaseInspectionInProgress(inspection: Inspection) {
-  if (inspection.status !== "Scheduled") return;
-  const { error } = await createClient().from("inspections").update({ status: "In Progress", updated_at: new Date().toISOString() }).eq("id", inspection.id);
+  const { error } = await createClient().from("inspections")
+    .update({ status: "In Progress", updated_at: new Date().toISOString() })
+    .eq("id", inspection.id)
+    .eq("status", "Scheduled");
   if (error) throw error;
 }
 

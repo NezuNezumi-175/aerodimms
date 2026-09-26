@@ -8,13 +8,14 @@ import { createClient } from "@/lib/supabase/client";
 import { useNetworkStatus } from "@/lib/use-network-status";
 import { setStoredUser } from "@/lib/demo-data";
 import { isDemoMode } from "@/lib/app-data";
+import { syncPendingOfflineChanges } from "@/lib/offline-sync";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isOnline = useNetworkStatus();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const connectionLabel = isOnline ? "Online" : "Offline – Data Stored Locally";
+  const connectionLabel = isOnline ? "Online" : "Offline";
   const connectionColor = isOnline
     ? "bg-emerald-500/15 text-emerald-300"
     : "bg-amber-500/15 text-amber-200";
@@ -45,6 +46,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe();
     };
   }, [pathname, router]);
+
+  useEffect(() => {
+    if (isDemoMode() || !isOnline || pathname === "/login" || pathname === "/") return;
+    let active = true;
+    let retryTimer: number | undefined;
+    const runSync = async () => {
+      try {
+        const { data: { session } } = await createClient().auth.getSession();
+        if (active && session) await syncPendingOfflineChanges();
+      } catch (error) {
+        console.error("Offline changes could not be synchronized. Retrying while online.", error);
+      }
+    };
+    void runSync();
+    retryTimer = window.setInterval(() => { void runSync(); }, 15000);
+    window.addEventListener("focus", runSync);
+    return () => {
+      active = false;
+      if (retryTimer !== undefined) window.clearInterval(retryTimer);
+      window.removeEventListener("focus", runSync);
+    };
+  }, [isOnline, pathname]);
 
   if (pathname === "/login" || pathname === "/") {
     return <>{children}</>;
