@@ -17,12 +17,8 @@ import {
   type Inspection,
   type InspectionStatus,
 } from "@/lib/inspection-data";
-<<<<<<< HEAD
 import { loadDemoState } from "@/lib/demo-data";
 import { isDemoMode } from "@/lib/app-data";
-=======
-import { loadDemoState, saveDemoState } from "@/lib/demo-data";
->>>>>>> ui_fix
 import { createFindingEvidence, requestFindingGps } from "@/lib/finding-form";
 import {
   getOfflineInspectionFindings,
@@ -87,14 +83,7 @@ function resultButtonClass(result: ChecklistResult, selected: boolean) {
 }
 
 export function InspectionExecutionPanel({ inspectionId }: { inspectionId: string }) {
-<<<<<<< HEAD
   const [inspection, setInspection] = useState<Inspection | undefined>(() => allInspections.find((item) => item.id === inspectionId));
-=======
-  const [adHocInspection, setAdHocInspection] = useState<Inspection | null>(null);
-  const [adHocInspectionLoadedFor, setAdHocInspectionLoadedFor] = useState<string | null>(null);
-  const inspection = allInspections.find((item) => item.id === inspectionId)
-    ?? (adHocInspection?.id === inspectionId ? adHocInspection : null);
->>>>>>> ui_fix
   const [answers, setAnswers] = useState<Record<string, ChecklistAnswer>>({});
   const [findings, setFindings] = useState<LocalFinding[]>([]);
   const [findingFormFor, setFindingFormFor] = useState<string | null>(null);
@@ -123,51 +112,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
 
   useEffect(() => {
     let active = true;
-<<<<<<< HEAD
     const load = async () => {
-=======
-    queueMicrotask(() => {
-      if (!active) return;
-      const storedInspection = loadDemoState().adHocInspections?.find((item) => item.id === inspectionId) ?? null;
-      setAdHocInspection(storedInspection);
-      setAdHocInspectionLoadedFor(inspectionId);
-    });
-    return () => {
-      active = false;
-    };
-  }, [inspectionId]);
-
-  useEffect(() => {
-    if (adHocInspection?.status !== "Scheduled") return;
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      try {
-        const state = loadDemoState();
-        const currentInspection = state.adHocInspections?.find((item) => item.id === adHocInspection.id);
-        if (!currentInspection || currentInspection.status !== "Scheduled") return;
-        const startedInspection = { ...currentInspection, status: "In Progress" as const };
-        saveDemoState({
-          ...state,
-          adHocInspections: state.adHocInspections?.map((item) =>
-            item.id === startedInspection.id ? startedInspection : item,
-          ),
-        });
-        setAdHocInspection(startedInspection);
-      } catch {
-        setOfflineStorageError("Unable to update this Inspection status in local demo storage.");
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [adHocInspection?.id, adHocInspection?.status]);
-
-  useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
->>>>>>> ui_fix
       let storedCompletedRecord: CompletedInspectionRecord | null = null;
       try {
         const demoState = loadDemoState();
@@ -282,7 +227,6 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     [],
   );
 
-<<<<<<< HEAD
   if (completionLoadedFor !== inspectionId) {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspection status…</div>;
   }
@@ -292,10 +236,6 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       Could not load inspection from Supabase: {loadError}
       <Link href="/inspections" className="mt-4 inline-flex rounded-lg bg-sky-600 px-4 py-2 font-semibold text-white hover:bg-sky-700">Back to Inspections</Link>
     </div>;
-=======
-  if (!inspection && adHocInspectionLoadedFor !== inspectionId) {
-    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspection…</div>;
->>>>>>> ui_fix
   }
 
   if (!inspection) {

@@ -6,19 +6,14 @@ import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { useNetworkStatus } from "@/lib/use-network-status";
-<<<<<<< HEAD
 import { setStoredUser } from "@/lib/demo-data";
 import { isDemoMode } from "@/lib/app-data";
-=======
-import { ProfileRoleProvider } from "@/lib/profile-role-context";
->>>>>>> ui_fix
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isOnline = useNetworkStatus();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentRole, setCurrentRole] = useState<string | null>(null);
   const connectionLabel = isOnline ? "Online" : "Offline – Data Stored Locally";
   const connectionColor = isOnline
     ? "bg-emerald-500/15 text-emerald-300"
@@ -37,30 +32,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const updateUser = (user: User | null) => {
-      if (!active) return;
-      setCurrentUser(user);
-      setCurrentRole(null);
-      if (!user) return;
-
-      void Promise.resolve().then(async () => {
-        try {
-          const { data, error } = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", user.id)
-            .maybeSingle();
-          if (active && !error) setCurrentRole(data?.role ?? null);
-        } catch {
-          if (active) setCurrentRole(null);
-        }
-      });
-    };
-
-    supabase.auth.getUser().then(({ data: { user } }) => updateUser(user));
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (active) setCurrentUser(user);
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      updateUser(session?.user ?? null);
+      if (active) setCurrentUser(session?.user ?? null);
     });
 
     return () => {
@@ -154,9 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-            <ProfileRoleProvider role={currentRole}>{children}</ProfileRoleProvider>
-          </main>
+          <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
         </div>
       </div>
     </div>

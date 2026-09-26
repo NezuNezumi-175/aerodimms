@@ -5,11 +5,7 @@ export type InspectionType =
   | "Airfield Lighting Inspection"
   | "Pavement Condition Inspection"
   | "Taxiway Safety Inspection"
-  | "Apron Operations Inspection"
-  | "Post-Incident Inspection"
-  | "Post-Weather Inspection"
-  | "Follow-up / Re-inspection"
-  | "Other";
+  | "Apron Operations Inspection";
 
 export type Inspection = {
   id: string;
@@ -18,8 +14,6 @@ export type Inspection = {
   area: string;
   date: string;
   status: InspectionStatus;
-  remarks?: string;
-  isAdHoc?: boolean;
 };
 
 export type ChecklistItem = {
@@ -205,27 +199,6 @@ export const allInspections = [
   ...completedInspections,
 ];
 
-export function generateNextInspectionId(existingIds: string[], at = new Date()) {
-  const datePart = [at.getFullYear(), String(at.getMonth() + 1).padStart(2, "0"), String(at.getDate()).padStart(2, "0")].join("-");
-  const prefix = `INSP-${datePart}-`;
-  const usedIds = new Set(existingIds);
-  let highestSequence = 0;
-
-  usedIds.forEach((id) => {
-    if (!id.startsWith(prefix)) return;
-    const sequence = Number(id.slice(prefix.length));
-    if (Number.isInteger(sequence)) highestSequence = Math.max(highestSequence, sequence);
-  });
-
-  let nextSequence = highestSequence + 1;
-  let candidate = `${prefix}${String(nextSequence).padStart(2, "0")}`;
-  while (usedIds.has(candidate)) {
-    nextSequence += 1;
-    candidate = `${prefix}${String(nextSequence).padStart(2, "0")}`;
-  }
-  return candidate;
-}
-
 export const checklistByInspectionType: Record<InspectionType, ChecklistItem[]> = {
   "Runway Surface Inspection": [
     { id: "surface", label: "Runway surface condition", guidance: "Check the pavement for loose material, deformation, or surface deterioration." },
@@ -265,27 +238,5 @@ export const checklistByInspectionType: Record<InspectionType, ChecklistItem[]> 
     { id: "equipment", label: "Ground equipment clearances", guidance: "Check that equipment is in designated areas and clear of movement paths." },
     { id: "spill", label: "Spill and drainage condition", guidance: "Look for fluid spills, blocked drains, or standing water on the apron." },
     { id: "safety-zone", label: "Apron safety zones", guidance: "Check safety zones and access routes for obstructions." },
-  ],
-  "Post-Incident Inspection": [
-    { id: "incident-area", label: "Incident area condition", guidance: "Inspect the affected area for damage, hazards, and remaining debris." },
-    { id: "operational-safety", label: "Operational safety", guidance: "Confirm adjacent aircraft and vehicle operations can continue safely." },
-    { id: "infrastructure", label: "Infrastructure condition", guidance: "Check nearby pavement, lighting, signs, and facilities for incident damage." },
-    { id: "follow-up", label: "Follow-up actions", guidance: "Record any hazards that require a separate maintenance response." },
-  ],
-  "Post-Weather Inspection": [
-    { id: "surface-condition", label: "Surface condition", guidance: "Check for standing water, loose material, erosion, or weather damage." },
-    { id: "drainage", label: "Drainage condition", guidance: "Check drains and channels for blockage or overflow." },
-    { id: "lighting-signs", label: "Lighting and signs", guidance: "Confirm lights and signs remain secure, visible, and operational." },
-    { id: "obstructions", label: "Obstructions and debris", guidance: "Check the inspection area for fallen objects or other obstructions." },
-  ],
-  "Follow-up / Re-inspection": [
-    { id: "previous-issue", label: "Previous issue condition", guidance: "Recheck the previously reported condition and its surrounding area." },
-    { id: "corrective-work", label: "Corrective work condition", guidance: "Review the visible result of completed corrective work." },
-    { id: "operational-safety", label: "Operational safety", guidance: "Confirm the area is safe for normal operations." },
-  ],
-  Other: [
-    { id: "area-condition", label: "Area condition", guidance: "Inspect the specified area for visible defects or hazards." },
-    { id: "operational-safety", label: "Operational safety", guidance: "Check that the area can be used safely for its intended operation." },
-    { id: "hazards", label: "Hazards and follow-up", guidance: "Record hazards that require further inspection or maintenance." },
   ],
 };

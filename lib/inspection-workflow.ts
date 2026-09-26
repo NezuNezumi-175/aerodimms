@@ -123,7 +123,7 @@ export function completeInspectionAndTransfer(record: CompletedInspectionRecord)
       sourceFindingId: finding.id,
       checklistItemId: finding.checklistItemId,
       checklistItemTitle: finding.checklistItemTitle,
-      title: finding.description,
+      title: finding.checklistItemTitle,
       description: finding.description,
       category: finding.category,
       severity: finding.severity.toUpperCase() as InternalInspectionFinding["severity"],
