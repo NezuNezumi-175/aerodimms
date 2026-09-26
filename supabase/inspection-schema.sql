@@ -45,24 +45,57 @@ alter table public.inspections enable row level security;
 alter table public.inspection_checklist_answers enable row level security;
 
 drop policy if exists "Authenticated users can read inspections" on public.inspections;
-create policy "Authenticated users can read inspections"
-  on public.inspections for select to authenticated using (true);
 drop policy if exists "Authenticated users can manage inspections" on public.inspections;
-create policy "Authenticated users can manage inspections"
-  on public.inspections for all to authenticated using (true) with check (true);
+drop policy if exists "Inspection roles can access inspections" on public.inspections;
+create policy "Inspection roles can access inspections"
+  on public.inspections for all to authenticated
+  using (
+    exists (
+      select 1 from public.profiles p
+      where p.id = (select auth.uid())
+        and p.role in ('INSPECTOR', 'OPERATIONS_MANAGER')
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.profiles p
+      where p.id = (select auth.uid())
+        and p.role in ('INSPECTOR', 'OPERATIONS_MANAGER')
+    )
+  );
 
 drop policy if exists "Authenticated users can read inspection checklist answers" on public.inspection_checklist_answers;
-create policy "Authenticated users can read inspection checklist answers"
-  on public.inspection_checklist_answers for select to authenticated using (true);
 drop policy if exists "Authenticated users can manage inspection checklist answers" on public.inspection_checklist_answers;
-create policy "Authenticated users can manage inspection checklist answers"
-  on public.inspection_checklist_answers for all to authenticated using (true) with check (true);
+drop policy if exists "Inspection roles can access checklist answers" on public.inspection_checklist_answers;
+create policy "Inspection roles can access checklist answers"
+  on public.inspection_checklist_answers for all to authenticated
+  using (
+    exists (
+      select 1 from public.profiles p
+      where p.id = (select auth.uid())
+        and p.role in ('INSPECTOR', 'OPERATIONS_MANAGER')
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.profiles p
+      where p.id = (select auth.uid())
+        and p.role in ('INSPECTOR', 'OPERATIONS_MANAGER')
+    )
+  );
 
 grant select, insert, update, delete on public.inspections to authenticated;
 grant select, insert, update, delete on public.inspection_checklist_answers to authenticated;
 drop policy if exists "Authenticated users can create findings" on public.findings;
 create policy "Authenticated users can create findings"
-  on public.findings for insert to authenticated with check (true);
+  on public.findings for insert to authenticated with check (
+    source_inspection_id is null
+    or exists (
+      select 1 from public.profiles p
+      where p.id = (select auth.uid())
+        and p.role in ('INSPECTOR', 'OPERATIONS_MANAGER')
+    )
+  );
 grant insert, update (category, inspector_remarks, gps_captured_at, source_inspection_id, source_finding_id, checklist_item_id, title, description, severity, status, location_name, latitude, longitude, created_at, updated_at)
   on public.findings to authenticated;
 

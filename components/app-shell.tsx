@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { useNetworkStatus } from "@/lib/use-network-status";
-import { setStoredUser } from "@/lib/demo-data";
+import { getStoredUser, setStoredUser, type Profile, type Role } from "@/lib/demo-data";
 import { isDemoMode } from "@/lib/app-data";
 import { syncPendingOfflineChanges } from "@/lib/offline-sync";
 
@@ -15,37 +15,56 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const isOnline = useNetworkStatus();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentRole, setCurrentRole] = useState<Role | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const connectionLabel = isOnline ? "Online" : "Offline";
   const connectionColor = isOnline
     ? "bg-emerald-500/15 text-emerald-300"
     : "bg-amber-500/15 text-amber-200";
+  const isInspectionRoute = pathname === "/inspections" || pathname.startsWith("/inspections/");
+  const canAccessInspections = currentRole === "INSPECTOR" || currentRole === "OPERATIONS_MANAGER";
 
   useEffect(() => {
-    if (pathname === "/login" || pathname === "/" || isDemoMode()) return;
-
     let active = true;
-    let supabase: ReturnType<typeof createClient>;
+    const storedProfile = getStoredUser();
+    setCurrentRole(storedProfile?.role ?? null);
+    setProfileLoaded(false);
 
-    try {
-      supabase = createClient();
-    } catch {
-      router.replace("/login");
-      return;
-    }
+    const loadProfile = async () => {
+      if (isDemoMode() || pathname === "/login" || pathname === "/") {
+        if (active) setProfileLoaded(true);
+        return;
+      }
 
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (active) setCurrentUser(user);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (active) setCurrentUser(session?.user ?? null);
-    });
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!active) return;
+        setCurrentUser(session?.user ?? null);
+        if (session && isOnline) {
+          const { data } = await supabase.from("profiles")
+            .select("id, employee_id, full_name, role, airport, created_at, updated_at")
+            .eq("id", session.user.id)
+            .maybeSingle();
+          if (!active) return;
+          if (data) {
+            const profile = data as Profile;
+            setCurrentRole(profile.role);
+            setStoredUser(profile);
+          }
+        }
+      } catch {
+        // Keep the role cached at login so route access still works offline.
+      } finally {
+        if (active) setProfileLoaded(true);
+      }
+    };
+    void loadProfile();
 
     return () => {
       active = false;
-      subscription.unsubscribe();
     };
-  }, [pathname, router]);
+  }, [isOnline, pathname]);
 
   useEffect(() => {
     if (isDemoMode() || !isOnline || pathname === "/login" || pathname === "/") return;
@@ -69,8 +88,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [isOnline, pathname]);
 
+  useEffect(() => {
+    if (isInspectionRoute && profileLoaded && !canAccessInspections) {
+      router.replace("/dashboard");
+    }
+  }, [canAccessInspections, isInspectionRoute, profileLoaded, router]);
+
   if (pathname === "/login" || pathname === "/") {
     return <>{children}</>;
+  }
+
+  if (isInspectionRoute && !profileLoaded) {
+    return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">Checking access…</div>;
+  }
+
+  if (isInspectionRoute && !canAccessInspections) {
+    return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">You do not have access to Inspections.</div>;
   }
 
   const logout = () => {
@@ -89,7 +122,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: "/dashboard", label: "Dashboard" },
-    { href: "/inspections", label: "Inspections" },
+    ...(canAccessInspections ? [{ href: "/inspections", label: "Inspections" }] : []),
     { href: "/map", label: "Map" },
     { href: "/issues", label: "Issues" },
   ];
