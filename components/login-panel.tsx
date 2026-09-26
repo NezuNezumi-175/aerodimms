@@ -114,6 +114,9 @@ export function LoginPanel() {
         <div className="mt-6 rounded-lg border border-slate-100 bg-slate-50/50 px-4 py-3 text-xs text-slate-400">
           <p className="font-medium text-slate-400">Demo Account</p>
           <p className="mt-1">
+            Role: INSPECTOR
+          </p>
+          <p>
             Email: demo.user@example.com
           </p>
           <p>
