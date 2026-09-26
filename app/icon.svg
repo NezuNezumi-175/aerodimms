@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="28" fill="#082F49" />
+  <path d="M64 18 96 84H82L64 46 46 84H32L64 18Z" fill="#F8FAFC" />
+  <path d="M61 58h6v8h-6zm0 14h6v8h-6z" fill="#38BDF8" />
+  <path d="M24 91h80v3H24z" fill="#38BDF8" />
+  <text x="64" y="111" text-anchor="middle" fill="#E0F2FE" font-family="Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="2.2">FUKUOKA</text>
+</svg>
