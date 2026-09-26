@@ -18,11 +18,17 @@ import {
 } from "@/lib/inspection-data";
 import { loadDemoState } from "@/lib/demo-data";
 import { createFindingEvidence, requestFindingGps } from "@/lib/finding-form";
+import {
+  getOfflineInspectionFindings,
+  getOfflineInspectionProgress,
+  saveOfflineFinding,
+  saveOfflineInspectionProgress,
+} from "@/lib/offline-db";
 import { completeInspectionAndTransfer } from "@/lib/inspection-workflow";
 
 type ChecklistResult = "Pass" | "Fail" | "N/A";
 type ChecklistAnswer = { result?: ChecklistResult; remark: string };
-type LocalFinding = {
+  type LocalFinding = {
   id: string;
   inspectionId: string;
   checklistItemId: string;
@@ -62,6 +68,8 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
   const [findingFormFor, setFindingFormFor] = useState<string | null>(null);
   const [findingDraft, setFindingDraft] = useState<FindingDraft>(() => createEmptyFindingDraft());
   const [findingFormError, setFindingFormError] = useState("");
+  const [offlineStorageError, setOfflineStorageError] = useState("");
+  const [isSavingFinding, setIsSavingFinding] = useState(false);
   const [gpsLoadingFor, setGpsLoadingFor] = useState<string | null>(null);
   const [gpsErrorFor, setGpsErrorFor] = useState<string | null>(null);
   const [gpsError, setGpsError] = useState("");
@@ -81,21 +89,95 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
+      let storedCompletedRecord: CompletedInspectionRecord | null = null;
       try {
         const demoState = loadDemoState();
-        const record = demoState.completedInspectionRecords?.find(
+        storedCompletedRecord = demoState.completedInspectionRecords?.find(
           (item) => item.inspection.id === inspectionId,
         ) ?? null;
-        setCompletedRecord(record);
         setTransferredCount(
           (demoState.internalInspectionFindings ?? []).filter(
             (finding) => finding.sourceInspectionId === inspectionId,
           ).length,
         );
       } catch {
-        setCompletedRecord(null);
+        storedCompletedRecord = null;
       }
-      setCompletionLoadedFor(inspectionId);
+
+      void (async () => {
+        try {
+          const [progress, storedFindings] = await Promise.all([
+            getOfflineInspectionProgress(inspectionId),
+            getOfflineInspectionFindings(inspectionId),
+          ]);
+          if (!active) return;
+
+          const restoredFindings: LocalFinding[] = storedFindings.flatMap(({ record, evidence }) => {
+            if (!record.inspectionId || !record.checklistItemId || !record.checklistItemTitle) return [];
+            return [{
+              id: record.findingId,
+              inspectionId: record.inspectionId,
+              checklistItemId: record.checklistItemId,
+              checklistItemTitle: record.checklistItemTitle,
+              description: record.description,
+              category: record.category as FindingCategory,
+              severity: record.severity as FindingSeverity,
+              area: record.area,
+              remarks: record.remarks,
+              gps: record.gps,
+              evidence: evidence.map((item) => {
+                const file = new File([item.blob], item.fileName, { type: item.fileType });
+                const previewUrl = URL.createObjectURL(file);
+                objectUrlsRef.current.add(previewUrl);
+                return {
+                  localId: item.id.slice(`${record.id}:`.length),
+                  file,
+                  fileName: item.fileName,
+                  fileType: item.fileType,
+                  fileSize: item.fileSize,
+                  previewUrl,
+                };
+              }),
+              createdAt: record.createdAt,
+            }];
+          });
+
+          setAnswers(progress?.answers ?? {});
+          setFindings(restoredFindings);
+          if (storedCompletedRecord) {
+            const restoredByFindingId = new Map(restoredFindings.map((finding) => [finding.id, finding]));
+            setCompletedRecord({
+              ...storedCompletedRecord,
+              findings: storedCompletedRecord.findings.map((finding) => {
+                const restored = restoredByFindingId.get(finding.id);
+                return restored
+                  ? {
+                      ...finding,
+                      evidence: restored.evidence.map((item) => ({
+                        localId: item.localId,
+                        fileName: item.fileName,
+                        fileType: item.fileType,
+                        fileSize: item.fileSize,
+                        previewUrl: item.previewUrl,
+                      })),
+                    }
+                  : finding;
+              }),
+            });
+          } else {
+            setCompletedRecord(null);
+          }
+        } catch {
+          if (active) {
+            setOfflineStorageError("Unable to read IndexedDB offline data. Local changes may not be recoverable until storage is available.");
+            setAnswers({});
+            setFindings([]);
+            setCompletedRecord(storedCompletedRecord);
+          }
+        } finally {
+          if (active) setCompletionLoadedFor(inspectionId);
+        }
+      })();
     });
     return () => {
       active = false;
@@ -141,7 +223,16 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
   }
 
   if (completedRecord) {
-    return <CompletedInspectionView record={completedRecord} transferredCount={transferredCount} />;
+    return (
+      <div className="mx-auto max-w-5xl space-y-4">
+        {offlineStorageError ? (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            {offlineStorageError}
+          </p>
+        ) : null}
+        <CompletedInspectionView record={completedRecord} transferredCount={transferredCount} />
+      </div>
+    );
   }
 
   const checklist = checklistByInspectionType[inspection.type];
@@ -161,11 +252,31 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
   const failCount = checklist.filter((item) => answers[item.id]?.result === "Fail").length;
   const notApplicableCount = checklist.filter((item) => answers[item.id]?.result === "N/A").length;
 
+  const persistProgress = (
+    nextAnswers: Record<string, ChecklistAnswer>,
+    nextFindings: LocalFinding[],
+    completionState: "IN_PROGRESS" | "COMPLETED" = "IN_PROGRESS",
+  ) => saveOfflineInspectionProgress({
+    inspectionId: inspection.id,
+    answers: nextAnswers,
+    findingRecordIds: nextFindings.map((finding) => `inspection:${inspection.id}:${finding.id}`),
+    completionState,
+  });
+
+  const persistProgressInBackground = (
+    nextAnswers: Record<string, ChecklistAnswer>,
+    nextFindings: LocalFinding[],
+  ) => {
+    void persistProgress(nextAnswers, nextFindings)
+      .then(() => setOfflineStorageError(""))
+      .catch(() => setOfflineStorageError("Unable to save inspection progress to IndexedDB. Keep working and try Save & Continue again."));
+  };
+
   const updateAnswer = (itemId: string, update: Partial<ChecklistAnswer>) => {
-    setAnswers((current) => {
-      const previous = current[itemId] ?? { remark: "" };
-      return { ...current, [itemId]: { ...previous, ...update } };
-    });
+    const previous = answers[itemId] ?? { remark: "" };
+    const nextAnswers = { ...answers, [itemId]: { ...previous, ...update } };
+    setAnswers(nextAnswers);
+    persistProgressInBackground(nextAnswers, findings);
     setSaveNotice(false);
   };
 
@@ -197,7 +308,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     setFindingFormFor(checklistItemId);
   };
 
-  const saveFinding = (checklistItemId: string, checklistItemTitle: string, draft: FindingDraft) => {
+  const saveFinding = async (checklistItemId: string, checklistItemTitle: string, draft: FindingDraft) => {
     const description = draft.description.trim();
 
     if (!description || !draft.category || !draft.severity) {
@@ -221,20 +332,54 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       createdAt: existingFinding?.createdAt ?? new Date().toISOString(),
     };
 
-    setFindings((current) => {
-      const existingIndex = current.findIndex(
-        (item) => item.inspectionId === inspection.id && item.checklistItemId === checklistItemId,
-      );
-      if (existingIndex < 0) return [...current, finding];
-      return current.map((item, index) => (index === existingIndex ? finding : item));
-    });
-    findingFormForRef.current = null;
-    setFindingFormFor(null);
-    setFindingFormError("");
-    setFindingDraft(createEmptyFindingDraft());
+    const existingIndex = findings.findIndex(
+      (item) => item.inspectionId === inspection.id && item.checklistItemId === checklistItemId,
+    );
+    const nextFindings = existingIndex < 0
+      ? [...findings, finding]
+      : findings.map((item, index) => (index === existingIndex ? finding : item));
+    const offlineRecordId = `inspection:${inspection.id}:${finding.id}`;
+
+    setIsSavingFinding(true);
+    try {
+      await saveOfflineFinding({
+        id: offlineRecordId,
+        findingId: finding.id,
+        kind: "checklist",
+        inspectionId: inspection.id,
+        checklistItemId: finding.checklistItemId,
+        checklistItemTitle: finding.checklistItemTitle,
+        description: finding.description,
+        category: finding.category,
+        severity: finding.severity,
+        area: finding.area,
+        remarks: finding.remarks,
+        gps: finding.gps,
+        createdAt: finding.createdAt,
+      }, finding.evidence.map((item) => ({
+        id: `${offlineRecordId}:${item.localId}`,
+        findingRecordId: offlineRecordId,
+        fileName: item.fileName,
+        fileType: item.fileType,
+        fileSize: item.fileSize,
+        blob: item.file,
+      })));
+      await persistProgress(answers, nextFindings);
+      setFindings(nextFindings);
+      setOfflineStorageError("");
+      findingFormForRef.current = null;
+      setFindingFormFor(null);
+      setFindingFormError("");
+      setFindingDraft(createEmptyFindingDraft());
+    } catch {
+      setFindingFormError("Unable to save this Finding and its evidence to IndexedDB. Keep the form open and retry.");
+      setOfflineStorageError("A Finding or its evidence could not be saved locally. The current form is still available.");
+    } finally {
+      setIsSavingFinding(false);
+    }
   };
 
-  const confirmCompletion = () => {
+  const confirmCompletion = async () => {
     if (!readyToComplete || findingFormFor !== null || isCompleting) return;
 
     setIsCompleting(true);
@@ -286,6 +431,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     };
 
     try {
+      await persistProgress(answers, findings, "COMPLETED");
       const result = completeInspectionAndTransfer(record);
       preservePreviewUrlsOnUnmountRef.current = completedFindings.some(
         (finding) => finding.evidence.some((item) => item.previewUrl),
@@ -298,8 +444,20 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       setFindingFormFor(null);
       setSaveNotice(false);
     } catch {
-      setCompletionError("Unable to save this completion in the local demo store. Please try again.");
+      setCompletionError("Unable to save this completion to local offline storage. Please try again.");
+      setOfflineStorageError("Inspection completion was not confirmed in IndexedDB. Your current progress remains on screen.");
       setIsCompleting(false);
+    }
+  };
+
+  const saveAndContinue = async () => {
+    try {
+      await persistProgress(answers, findings);
+      setOfflineStorageError("");
+      setSaveNotice(true);
+    } catch {
+      setOfflineStorageError("Unable to save inspection progress to IndexedDB. Keep working and try again.");
+      setSaveNotice(false);
     }
   };
 
@@ -392,6 +550,12 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
           </div>
         </dl>
       </section>
+
+      {offlineStorageError ? (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+          {offlineStorageError}
+        </p>
+      ) : null}
 
       <section aria-labelledby="checklist-heading">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -506,6 +670,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
                     gpsError={gpsErrorFor === item.id ? gpsError : ""}
                     evidenceError={evidenceError}
                     formError={findingFormError}
+                    isSaving={isSavingFinding}
                     onAddEvidence={addEvidence}
                     onRemoveEvidence={(localId) => {
                       setFindingDraft((current) => ({
@@ -536,14 +701,14 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       <section aria-label="Inspection actions" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         {saveNotice ? (
           <p role="status" className="mb-4 text-sm font-medium text-emerald-700">
-            Inspection progress saved locally for this session.
+            Inspection progress saved locally. Pending sync.
           </p>
         ) : null}
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={() => {
-              setSaveNotice(true);
+              void saveAndContinue();
             }}
             className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >

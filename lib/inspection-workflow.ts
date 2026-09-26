@@ -2,6 +2,7 @@ import { loadDemoState, saveDemoState } from "@/lib/demo-data";
 import type { FindingDraft, Inspection } from "@/lib/inspection-data";
 import type { CompletedInspectionRecord, InternalInspectionFinding } from "@/lib/inspection-data";
 import { getNextManualFindingCode } from "@/lib/manual-finding-id";
+import { saveOfflineFinding } from "@/lib/offline-db";
 
 function hasValidGps(gps: FindingDraft["gps"]): gps is NonNullable<FindingDraft["gps"]> {
   return Boolean(
@@ -15,7 +16,7 @@ function hasValidGps(gps: FindingDraft["gps"]): gps is NonNullable<FindingDraft[
   );
 }
 
-export function saveManualFinding(
+export async function saveManualFinding(
   draft: FindingDraft,
   relatedInspection?: Inspection,
 ) {
@@ -64,6 +65,28 @@ export function saveManualFinding(
     remarks: relatedInspection ? `Related inspection: ${relatedInspection.id}` : "No related inspection",
     createdAt: now,
   };
+
+  const offlineRecordId = `manual:${finding.id}`;
+  await saveOfflineFinding({
+    id: offlineRecordId,
+    findingId: finding.findingCode,
+    kind: "manual",
+    inspectionId: relatedInspection?.id,
+    description: finding.description,
+    category: finding.category,
+    severity: finding.severity,
+    area: finding.locationName,
+    remarks: finding.inspectorRemarks,
+    gps: finding.gps,
+    createdAt: finding.createdAt,
+  }, draft.evidence.map((item) => ({
+    id: `${offlineRecordId}:${item.localId}`,
+    findingRecordId: offlineRecordId,
+    fileName: item.fileName,
+    fileType: item.fileType,
+    fileSize: item.fileSize,
+    blob: item.file,
+  })));
 
   saveDemoState({
     ...state,

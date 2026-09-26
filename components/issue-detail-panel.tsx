@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getStoredUser, loadDemoState, saveDemoState, type DemoState, type Finding, type IssueHistoryEntry } from "@/lib/demo-data";
 import type { InternalInspectionFinding } from "@/lib/inspection-data";
+import { getOfflineEvidenceForFinding } from "@/lib/offline-db";
 
 type IssueDetailPanelProps = {
   findingCode: string;
@@ -17,9 +18,12 @@ type IssueEvidenceDisplay = {
   fileSize?: number;
   previewUrl?: string;
 };
+type OfflineEvidencePreview = IssueEvidenceDisplay & { localId: string };
 
 export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   const [state, setState] = useState<DemoState | null>(null);
+  const [offlineEvidence, setOfflineEvidence] = useState<OfflineEvidencePreview[]>([]);
+  const [offlineEvidenceError, setOfflineEvidenceError] = useState("");
   const currentUser = getStoredUser();
 
   useEffect(() => {
@@ -41,6 +45,54 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   const internalFinding = finding && "sourceFindingId" in finding
     ? finding as InternalInspectionFinding
     : null;
+  const offlineFindingRecordId = internalFinding
+    ? internalFinding.checklistItemId && internalFinding.sourceInspectionId
+      ? `inspection:${internalFinding.sourceInspectionId}:${internalFinding.sourceFindingId}`
+      : `manual:${internalFinding.id}`
+    : null;
+
+  useEffect(() => {
+    let active = true;
+    const previewUrls: string[] = [];
+    if (!offlineFindingRecordId) {
+      queueMicrotask(() => {
+        if (active) setOfflineEvidence([]);
+      });
+      return () => {
+        active = false;
+      };
+    }
+
+    getOfflineEvidenceForFinding(offlineFindingRecordId)
+      .then((records) => {
+        const previews = records.map((record) => {
+          const previewUrl = URL.createObjectURL(record.blob);
+          previewUrls.push(previewUrl);
+          return {
+            id: record.id,
+            localId: record.id.slice(`${offlineFindingRecordId}:`.length),
+            fileName: record.fileName,
+            mimeType: record.fileType,
+            fileSize: record.fileSize,
+            previewUrl,
+          };
+        });
+        if (active) {
+          setOfflineEvidence(previews);
+          setOfflineEvidenceError("");
+        } else {
+          previewUrls.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+        }
+      })
+      .catch(() => {
+        if (active) setOfflineEvidenceError("Unable to restore locally stored evidence from IndexedDB.");
+      });
+
+    return () => {
+      active = false;
+      previewUrls.forEach((previewUrl) => URL.revokeObjectURL(previewUrl));
+    };
+  }, [offlineFindingRecordId]);
 
   const workOrder = useMemo(() => {
     if (!state || !finding) return null;
@@ -55,11 +107,11 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
         fileName: item.fileName,
         mimeType: item.fileType,
         fileSize: item.fileSize,
-        previewUrl: item.previewUrl,
+        previewUrl: offlineEvidence.find((offlineItem) => offlineItem.localId === item.localId)?.previewUrl ?? item.previewUrl,
       }));
     }
     return state.evidence.filter((item) => item.findingId === finding.id);
-  }, [finding, state]);
+  }, [finding, offlineEvidence, state]);
 
   const history = useMemo(() => {
     if (!state || !finding) return [];
@@ -281,6 +333,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900">Evidence</h3>
+          {offlineEvidenceError ? <p role="alert" className="mt-2 text-sm text-red-700">{offlineEvidenceError}</p> : null}
           <div className="mt-4 space-y-3">
             {evidenceItems.length ? (
               evidenceItems.map((item) => (
