@@ -62,7 +62,7 @@ export function LoginPanel() {
             AeroDIMMS
           </p>
           <h1 className="mt-3 text-3xl font-bold text-slate-900">
-            Penang Airport
+            Fukuoka Airport
           </h1>
           <p className="mt-2 text-sm text-slate-600">
             Operations dashboard and issue tracker
