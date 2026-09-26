@@ -7,8 +7,8 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { useNetworkStatus } from "@/lib/use-network-status";
 import { getStoredUser, setStoredUser, type Profile, type Role } from "@/lib/demo-data";
+import { useOfflineSync } from "@/lib/use-offline-sync";
 import { isDemoMode } from "@/lib/app-data";
-import { syncPendingOfflineChanges } from "@/lib/offline-sync";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -17,8 +17,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentRole, setCurrentRole] = useState<Role | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
-  const connectionLabel = isOnline ? "Online" : "Offline";
-  const connectionColor = isOnline
+  const sync = useOfflineSync(isOnline, currentUser?.id, pathname !== "/login" && pathname !== "/" && !isDemoMode());
+  const connectionLabel = !isOnline ? "Offline – Data Stored Locally" : sync.syncing ? "Syncing" : sync.error ? "Sync pending" : "Online";
+  const connectionColor = isOnline && !sync.syncing && !sync.error
     ? "bg-emerald-500/15 text-emerald-300"
     : "bg-amber-500/15 text-amber-200";
   const isInspectionRoute = pathname === "/inspections" || pathname.startsWith("/inspections/");
@@ -63,28 +64,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
     return () => {
       active = false;
-    };
-  }, [isOnline, pathname]);
-
-  useEffect(() => {
-    if (isDemoMode() || !isOnline || pathname === "/login" || pathname === "/") return;
-    let active = true;
-    let retryTimer: number | undefined;
-    const runSync = async () => {
-      try {
-        const { data: { session } } = await createClient().auth.getSession();
-        if (active && session) await syncPendingOfflineChanges();
-      } catch (error) {
-        console.error("Offline changes could not be synchronized. Retrying while online.", error);
-      }
-    };
-    void runSync();
-    retryTimer = window.setInterval(() => { void runSync(); }, 15000);
-    window.addEventListener("focus", runSync);
-    return () => {
-      active = false;
-      if (retryTimer !== undefined) window.clearInterval(retryTimer);
-      window.removeEventListener("focus", runSync);
     };
   }, [isOnline, pathname]);
 
@@ -154,7 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               })}
             </nav>
 
-            <div className={`ml-auto flex shrink-0 items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ${connectionColor}`}>
+            <div role="status" title={sync.error || undefined} className={`ml-auto flex shrink-0 items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ${connectionColor}`}>
               <span className={`h-2 w-2 rounded-full ${isOnline ? "bg-emerald-400" : "bg-amber-300"}`} />
               {connectionLabel}
             </div>
@@ -186,6 +165,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           </header>
+
+          {isOnline && sync.error ? <p role="alert" className="shrink-0 bg-amber-50 px-5 py-2 text-sm text-amber-900">Synchronization will retry automatically. Local data is retained. {sync.error}</p> : null}
 
           <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
         </div>

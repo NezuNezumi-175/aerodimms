@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { useSyncRefresh } from "@/lib/use-sync-refresh";
 import { loadAppState } from "@/lib/app-data";
 import type { DemoState } from "@/lib/demo-data";
 
@@ -42,9 +43,12 @@ export function IssuesPanel() {
   const searchParams = useSearchParams();
   const [state, setState] = useState<DemoState | null>(null);
 
+  const syncRevision = useSyncRefresh();
   useEffect(() => {
-    loadAppState().then(setState).catch(() => setState(null));
-  }, []);
+    let active = true;
+    loadAppState().then((data) => { if (active) setState(data); }).catch(() => { if (active) setState(null); });
+    return () => { active = false; };
+  }, [syncRevision]);
 
   const allFindings = useMemo(() => {
     if (!state) return [];

@@ -6,6 +6,8 @@ export type OfflineFindingKind = "manual" | "checklist";
 export type OfflineFindingRecord = {
   id: string;
   findingId: string;
+  internalId?: string;
+  findingCode?: string;
   kind: OfflineFindingKind;
   inspectionId?: string;
   checklistItemId?: string;
@@ -20,6 +22,9 @@ export type OfflineFindingRecord = {
   createdAt: string;
   updatedAt: string;
   syncStatus: SyncStatus;
+  // Optional sync receipt; old IndexedDB records remain readable without migration.
+  serverId?: string;
+  serverUpdatedAt?: string;
 };
 
 export type OfflineEvidenceRecord = {
@@ -42,6 +47,7 @@ export type OfflineChecklistAnswer = {
 
 export type OfflineInspectionProgress = {
   inspectionId: string;
+  inspection?: Inspection;
   answers: Record<string, OfflineChecklistAnswer>;
   findingRecordIds: string[];
   completionState: "IN_PROGRESS" | "COMPLETED";
@@ -55,9 +61,8 @@ export type OfflineFindingWithEvidence = {
 };
 
 const DATABASE_NAME = "aerodimms-offline";
-// Keep this at least as high as the schema previously used by this app.
-// IndexedDB rejects an open request that asks for a version below the one
-// already stored by the browser, even when this code only needs older stores.
+// main already shipped version 3; keep this number to avoid VersionError in
+// browsers that opened that database before this merge.
 const DATABASE_VERSION = 3;
 const FINDINGS_STORE = "findings";
 const PROGRESS_STORE = "inspectionProgress";
@@ -151,7 +156,13 @@ export async function saveOfflineFinding(
   };
 
   try {
-    findingsStore.put(storedRecord);
+    const previousRecord = findingsStore.get(record.id);
+    previousRecord.onsuccess = () => {
+      const previous: OfflineFindingRecord | undefined = previousRecord.result;
+      storedRecord.serverId = record.serverId ?? previous?.serverId;
+      storedRecord.serverUpdatedAt = record.serverUpdatedAt ?? previous?.serverUpdatedAt;
+      findingsStore.put(storedRecord);
+    };
     const existingEvidence = evidenceStore.index("findingRecordId").getAllKeys(record.id);
     existingEvidence.onsuccess = () => {
       existingEvidence.result.forEach((key) => evidenceStore.delete(key));
@@ -187,7 +198,12 @@ export async function saveOfflineInspectionProgress(
   };
 
   try {
-    transaction.objectStore(PROGRESS_STORE).put(storedProgress);
+    const store = transaction.objectStore(PROGRESS_STORE);
+    const previous = store.get(progress.inspectionId);
+    previous.onsuccess = () => {
+      storedProgress.inspection = progress.inspection ?? previous.result?.inspection;
+      store.put(storedProgress);
+    };
     await done;
   } catch (error) {
     try {
@@ -213,83 +229,6 @@ export async function getOfflineInspectionProgress(inspectionId: string) {
   return record;
 }
 
-export async function getAllOfflineFindings() {
-  const database = await openDatabase();
-  const transaction = database.transaction(FINDINGS_STORE, "readonly");
-  const done = transactionComplete(transaction);
-  const request = transaction.objectStore(FINDINGS_STORE).getAll();
-  const [records] = await Promise.all([requestResult<OfflineFindingRecord[]>(request), done]);
-  return records;
-}
-
-export async function updateOfflineFindingSyncStatus(id: string, syncStatus: SyncStatus) {
-  const database = await openDatabase();
-  const transaction = database.transaction(FINDINGS_STORE, "readwrite");
-  const done = transactionComplete(transaction);
-  const store = transaction.objectStore(FINDINGS_STORE);
-  const request = store.get(id);
-  request.onsuccess = () => {
-    if (request.result) store.put({ ...request.result, syncStatus, updatedAt: new Date().toISOString() });
-  };
-  await done;
-}
-
-export async function getAllOfflineInspectionProgress() {
-  const database = await openDatabase();
-  const transaction = database.transaction(PROGRESS_STORE, "readonly");
-  const done = transactionComplete(transaction);
-  const request = transaction.objectStore(PROGRESS_STORE).getAll();
-  const [records] = await Promise.all([requestResult<OfflineInspectionProgress[]>(request), done]);
-  return records;
-}
-
-export async function updateOfflineInspectionSyncStatus(inspectionId: string, syncStatus: SyncStatus) {
-  const database = await openDatabase();
-  const transaction = database.transaction(PROGRESS_STORE, "readwrite");
-  const done = transactionComplete(transaction);
-  const store = transaction.objectStore(PROGRESS_STORE);
-  const request = store.get(inspectionId);
-  request.onsuccess = () => {
-    if (request.result) store.put({ ...request.result, syncStatus, updatedAt: new Date().toISOString() });
-  };
-  await done;
-}
-
-export async function cacheOfflineInspections(inspections: Inspection[]) {
-  const database = await openDatabase();
-  const transaction = database.transaction(INSPECTIONS_STORE, "readwrite");
-  const done = transactionComplete(transaction);
-  const store = transaction.objectStore(INSPECTIONS_STORE);
-  inspections.forEach((inspection) => store.put(inspection));
-  await done;
-}
-
-export async function getOfflineInspections() {
-  const database = await openDatabase();
-  const transaction = database.transaction(INSPECTIONS_STORE, "readonly");
-  const done = transactionComplete(transaction);
-  const request = transaction.objectStore(INSPECTIONS_STORE).getAll();
-  const [records] = await Promise.all([requestResult<Inspection[]>(request), done]);
-  return records;
-}
-
-export async function cacheOfflineAppState(state: unknown) {
-  const database = await openDatabase();
-  const transaction = database.transaction(APP_STATE_STORE, "readwrite");
-  const done = transactionComplete(transaction);
-  transaction.objectStore(APP_STATE_STORE).put({ key: "cloud", state, updatedAt: new Date().toISOString() });
-  await done;
-}
-
-export async function getOfflineAppState<T>() {
-  const database = await openDatabase();
-  const transaction = database.transaction(APP_STATE_STORE, "readonly");
-  const done = transactionComplete(transaction);
-  const request = transaction.objectStore(APP_STATE_STORE).get("cloud");
-  const [record] = await Promise.all([requestResult<{ state: T } | undefined>(request), done]);
-  return record?.state;
-}
-
 export async function getOfflineEvidenceForFinding(findingRecordId: string) {
   const database = await openDatabase();
   const transaction = database.transaction(EVIDENCE_STORE, "readonly");
@@ -300,6 +239,16 @@ export async function getOfflineEvidenceForFinding(findingRecordId: string) {
     done,
   ]);
   return evidence;
+}
+
+export async function getAllOfflineFindings() {
+  const database = await openDatabase();
+  const transaction = database.transaction(FINDINGS_STORE, "readonly");
+  const done = transactionComplete(transaction);
+  const [records] = await Promise.all([
+    requestResult<OfflineFindingRecord[]>(transaction.objectStore(FINDINGS_STORE).getAll()), done,
+  ]);
+  return records;
 }
 
 export async function getOfflineInspectionFindings(inspectionId: string) {
@@ -317,4 +266,127 @@ export async function getOfflineInspectionFindings(inspectionId: string) {
     const evidence = await getOfflineEvidenceForFinding(record.id);
     return { record, evidence } satisfies OfflineFindingWithEvidence;
   }));
+}
+
+// Metadata lives in the existing store; no database upgrade or record reset.
+export async function cacheOfflineInspections(inspections: Inspection[]) {
+  const database = await openDatabase();
+  const transaction = database.transaction(PROGRESS_STORE, "readwrite");
+  const done = transactionComplete(transaction);
+  const store = transaction.objectStore(PROGRESS_STORE);
+  for (const inspection of inspections) {
+    const request = store.get(inspection.id);
+    request.onsuccess = () => store.put({
+      ...(request.result ?? {
+        inspectionId: inspection.id, answers: {}, findingRecordIds: [],
+        completionState: "IN_PROGRESS", updatedAt: new Date().toISOString(), syncStatus: "synced",
+      }),
+      inspection,
+    });
+  }
+  await done;
+}
+
+export async function getCachedOfflineInspections(): Promise<Inspection[]> {
+  const database = await openDatabase();
+  const transaction = database.transaction(PROGRESS_STORE, "readonly");
+  const done = transactionComplete(transaction);
+  const [records] = await Promise.all([
+    requestResult<OfflineInspectionProgress[]>(transaction.objectStore(PROGRESS_STORE).getAll()), done,
+  ]);
+  return records.flatMap((record) => record.inspection ? [{
+    ...record.inspection,
+    status: record.syncStatus !== "synced"
+      ? record.completionState === "COMPLETED" ? "Completed" : "In Progress"
+      : record.inspection.status,
+  }] : []);
+}
+
+export async function cacheOfflineAppState(state: unknown) {
+  const database = await openDatabase();
+  const transaction = database.transaction(APP_STATE_STORE, "readwrite");
+  const done = transactionComplete(transaction);
+  transaction.objectStore(APP_STATE_STORE).put({ key: "cloud", state, updatedAt: new Date().toISOString() });
+  await done;
+}
+
+export async function getOfflineAppState<T>() {
+  const database = await openDatabase();
+  const transaction = database.transaction(APP_STATE_STORE, "readonly");
+  const done = transactionComplete(transaction);
+  const [record] = await Promise.all([
+    requestResult<{ key: string; state: T } | undefined>(transaction.objectStore(APP_STATE_STORE).get("cloud")), done,
+  ]);
+  return record?.state;
+}
+
+export async function getOfflineSyncQueue() {
+  const database = await openDatabase();
+  const transaction = database.transaction([FINDINGS_STORE, PROGRESS_STORE, EVIDENCE_STORE], "readonly");
+  const done = transactionComplete(transaction);
+  const [findings, progress, evidence] = await Promise.all([
+    requestResult<OfflineFindingRecord[]>(transaction.objectStore(FINDINGS_STORE).getAll()),
+    requestResult<OfflineInspectionProgress[]>(transaction.objectStore(PROGRESS_STORE).getAll()),
+    requestResult<OfflineEvidenceRecord[]>(transaction.objectStore(EVIDENCE_STORE).getAll()),
+    done,
+  ]);
+  return {
+    findings: findings.filter((record) => record.syncStatus !== "synced" || evidence.some((item) => item.findingRecordId === record.id && item.syncStatus !== "synced"))
+      .map((record) => ({ record, evidence: evidence.filter((item) => item.findingRecordId === record.id) })),
+    progress: progress.filter((record) => record.syncStatus !== "synced"),
+  };
+}
+
+// Compare the uploaded revision before marking it; edits made during an upload stay pending.
+async function markRevisionSynced(storeName: string, key: string, revision: string, revisionField: "updatedAt" | "createdAt", snapshot: OfflineFindingRecord | OfflineEvidenceRecord | OfflineInspectionProgress) {
+  const database = await openDatabase();
+  const transaction = database.transaction(storeName, "readwrite");
+  const done = transactionComplete(transaction);
+  const store = transaction.objectStore(storeName);
+  const request = store.get(key);
+  request.onsuccess = () => {
+    const current = request.result;
+    const unchanged = current && Object.entries(snapshot).every(([field, value]) =>
+      field === "syncStatus" || field === "blob" || JSON.stringify(current[field]) === JSON.stringify(value));
+    if (unchanged && current[revisionField] === revision) store.put({ ...current, syncStatus: "synced" });
+  };
+  await done;
+}
+
+export function markOfflineFindingSynced(record: OfflineFindingRecord) {
+  return markRevisionSynced(FINDINGS_STORE, record.id, record.updatedAt, "updatedAt", record);
+}
+
+export async function acknowledgeOfflineFindingSync(record: OfflineFindingRecord, serverId: string, serverUpdatedAt: string, findingCode?: string) {
+  const database = await openDatabase();
+  const transaction = database.transaction([FINDINGS_STORE, EVIDENCE_STORE], "readwrite");
+  const done = transactionComplete(transaction);
+  const findings = transaction.objectStore(FINDINGS_STORE);
+  const evidence = transaction.objectStore(EVIDENCE_STORE);
+  const request = findings.get(record.id);
+  request.onsuccess = () => {
+    const current: OfflineFindingRecord | undefined = request.result;
+    if (!current || current.inspectionId !== record.inspectionId || current.checklistItemId !== record.checklistItemId) return;
+    const unchanged = Object.entries(record).every(([field, value]) =>
+      field === "syncStatus" || field === "serverId" || field === "serverUpdatedAt" || field === "findingCode"
+      || JSON.stringify(current[field as keyof OfflineFindingRecord]) === JSON.stringify(value));
+    findings.put({ ...current, serverId, serverUpdatedAt, findingCode: findingCode ?? current.findingCode, syncStatus: unchanged ? "synced" : "pending" });
+    if (!unchanged) return;
+    for (const id of record.evidenceIds) {
+      const photo = evidence.get(id);
+      photo.onsuccess = () => {
+        const item: OfflineEvidenceRecord | undefined = photo.result;
+        if (item && item.createdAt === record.updatedAt) evidence.put({ ...item, syncStatus: "synced" });
+      };
+    }
+  };
+  await done;
+}
+
+export function markOfflineEvidenceSynced(record: OfflineEvidenceRecord) {
+  return markRevisionSynced(EVIDENCE_STORE, record.id, record.createdAt, "createdAt", record);
+}
+
+export function markOfflineProgressSynced(record: OfflineInspectionProgress) {
+  return markRevisionSynced(PROGRESS_STORE, record.inspectionId, record.updatedAt, "updatedAt", record);
 }

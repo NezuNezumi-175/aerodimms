@@ -4,22 +4,57 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { FindingForm } from "@/components/finding-form";
 import { createFindingEvidence, requestFindingGps } from "@/lib/finding-form";
-import { loadDemoState, type DemoState } from "@/lib/demo-data";
+import { getStoredUser, loadDemoState, type DemoState, type Profile } from "@/lib/demo-data";
 import { isDemoMode } from "@/lib/app-data";
 import { saveManualFinding } from "@/lib/inspection-workflow";
-import { loadSupabaseInspections } from "@/lib/supabase/inspection-write";
-import { cacheOfflineInspections, getOfflineInspections } from "@/lib/offline-db";
-import { saveFindingToLocalQueue, syncPendingOfflineChanges } from "@/lib/offline-sync";
+import { saveFindingToSupabase } from "@/lib/supabase/finding-write";
+import { createSupabaseInspection, loadSupabaseInspections } from "@/lib/supabase/inspection-write";
 import { useNetworkStatus } from "@/lib/use-network-status";
+import { useSyncRefresh } from "@/lib/use-sync-refresh";
+import { getCachedOfflineInspections } from "@/lib/offline-db";
 import {
   allInspections,
+  checklistByInspectionType,
   type FindingDraft,
   type Inspection,
   type InspectionStatus,
+  type InspectionType,
 } from "@/lib/inspection-data";
 
 function createEmptyFindingDraft(area = ""): FindingDraft {
   return { description: "", category: "", severity: "", area, remarks: "", gps: null, evidence: [] };
+}
+
+type NewInspectionDraft = {
+  id: string;
+  inspectorValue: string;
+  type: InspectionType;
+  area: string;
+  scheduledDate: string;
+};
+
+const inspectionTypes = Object.keys(checklistByInspectionType) as InspectionType[];
+
+function generateInspectionId(existingIds: string[], scheduledDate: string) {
+  const prefix = `INSP-${scheduledDate}-`;
+  const usedIds = new Set(existingIds);
+  const highestSequence = existingIds.reduce((highest, id) => {
+    if (!id.startsWith(prefix)) return highest;
+    const sequence = Number(id.slice(prefix.length));
+    return Number.isInteger(sequence) ? Math.max(highest, sequence) : highest;
+  }, 0);
+  let sequence = highestSequence + 1;
+  let candidate = `${prefix}${String(sequence).padStart(2, "0")}`;
+  while (usedIds.has(candidate)) {
+    sequence += 1;
+    candidate = `${prefix}${String(sequence).padStart(2, "0")}`;
+  }
+  return candidate;
+}
+
+function toDateInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 function getSaveErrorMessage(error: unknown) {
@@ -122,6 +157,7 @@ function InspectionSection({
 }
 
 export function InspectionsPanel() {
+  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
   const [demoState, setDemoState] = useState<DemoState | null>(null);
   const [supabaseInspections, setSupabaseInspections] = useState<Inspection[] | null>(null);
   const [inspectionLoadError, setInspectionLoadError] = useState("");
@@ -134,17 +170,30 @@ export function InspectionsPanel() {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [evidenceError, setEvidenceError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [syncError, setSyncError] = useState("");
+  const [newInspectionOpen, setNewInspectionOpen] = useState(false);
+  const [newInspectionDraft, setNewInspectionDraft] = useState<NewInspectionDraft | null>(null);
+  const [newInspectionError, setNewInspectionError] = useState("");
+  const [isCreatingInspection, setIsCreatingInspection] = useState(false);
   const objectUrlsRef = useRef<Set<string>>(new Set());
+  const inspectionLoadRequestRef = useRef(0);
   const isOnline = useNetworkStatus();
+  const syncRevision = useSyncRefresh();
 
   useEffect(() => {
     let active = true;
-    if (isDemoMode()) {
-      queueMicrotask(() => { if (active) setDemoState(loadDemoState()); });
-    } else {
-      setDemoState({ assets: [], findings: [], workOrders: [], evidence: [], issueHistory: [] });
-    }
+    queueMicrotask(() => {
+      if (active) setDemoState(loadDemoState());
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setCurrentProfile(getStoredUser());
+    });
     return () => {
       active = false;
     };
@@ -152,38 +201,30 @@ export function InspectionsPanel() {
 
   useEffect(() => {
     if (isDemoMode()) return;
-    let active = true;
     if (!isOnline) {
-      getOfflineInspections().then((items) => {
+      let active = true;
+      getCachedOfflineInspections().then((cached) => {
         if (active) {
-          setSupabaseInspections(items);
-          setInspectionLoadError(items.length ? "" : "No cloud inspections are cached on this device yet. Connect to the internet once to load them.");
+          setSupabaseInspections((previous) => Array.from(new Map(
+            [...allInspections, ...(previous ?? []), ...cached].map((item) => [item.id, item]),
+          ).values()));
+          setInspectionLoadError("");
         }
-      }).catch((error) => {
-        if (active) setInspectionLoadError(error instanceof Error ? error.message : "Could not read cached inspections.");
-      });
+      }).catch(() => { /* Keep the last loaded list if local storage is unavailable. */ });
       return () => { active = false; };
     }
+    let active = true;
+    const requestId = ++inspectionLoadRequestRef.current;
     loadSupabaseInspections().then((items) => {
-      if (active) setSupabaseInspections(items);
-      void cacheOfflineInspections(items).catch((error) => console.error("Unable to cache inspections locally.", error));
+      if (active && requestId === inspectionLoadRequestRef.current) setSupabaseInspections(items);
     }).catch((error) => {
-      if (active) {
+      if (active && requestId === inspectionLoadRequestRef.current) {
         setInspectionLoadError(error instanceof Error ? error.message : "Could not load inspections from Supabase.");
-        void getOfflineInspections().then((items) => { if (active) setSupabaseInspections(items); });
+        setSupabaseInspections([]);
       }
     });
     return () => { active = false; };
-  }, [isOnline]);
-
-  useEffect(() => {
-    const handleSyncComplete = (event: Event) => {
-      const result = (event as CustomEvent<{ errors: string[] }>).detail;
-      setSyncError(result.errors[0] ?? "");
-    };
-    window.addEventListener("aerodimms:offline-sync-complete", handleSyncComplete);
-    return () => window.removeEventListener("aerodimms:offline-sync-complete", handleSyncComplete);
-  }, []);
+  }, [isOnline, syncRevision]);
 
   useEffect(() => {
     const retainedUrls = new Set(findingDraft.evidence.map((attachment) => attachment.previewUrl));
@@ -207,8 +248,11 @@ export function InspectionsPanel() {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspections…</div>;
   }
 
-  const inspectionRows = isDemoMode() || !isOnline ? allInspections : supabaseInspections ?? [];
-  const completedRecords = isDemoMode() ? demoState.completedInspectionRecords ?? [] : [];
+  const inspectionRows = isDemoMode() ? allInspections : supabaseInspections ?? [];
+  const storedCompletedRecords = demoState.completedInspectionRecords ?? [];
+  const completedRecords = !isDemoMode() && isOnline
+    ? storedCompletedRecords.filter((record) => !inspectionRows.some((inspection) => inspection.id === record.inspection.id))
+    : storedCompletedRecords;
   const completedIds = new Set(completedRecords.map((record) => record.inspection.id));
   const activeScheduled = inspectionRows.filter((inspection) => inspection.status === "Scheduled" && !completedIds.has(inspection.id));
   const activeInProgress = inspectionRows.filter((inspection) => inspection.status === "In Progress" && !completedIds.has(inspection.id));
@@ -219,6 +263,94 @@ export function InspectionsPanel() {
   const viewableCompletedIds = new Set(completedHistory.map((inspection) => inspection.id));
   const relatedInspections = [...activeInProgress, ...activeScheduled];
   const relatedInspection = relatedInspections.find((inspection) => inspection.id === selectedInspectionId);
+  const inspectorOptions = Array.from(new Map(
+    [
+      ...inspectionRows.map((inspection) => ({
+        value: inspection.inspectorEmployeeId ? `employee:${inspection.inspectorEmployeeId}` : `name:${inspection.inspector}`,
+        employeeId: inspection.inspectorEmployeeId,
+        name: inspection.inspector,
+      })),
+      ...(currentProfile?.role === "INSPECTOR" ? [{
+        value: `employee:${currentProfile.employee_id}`,
+        employeeId: currentProfile.employee_id,
+        name: currentProfile.full_name,
+      }] : []),
+    ].map((option) => [option.value, option] as const),
+  ).values());
+  const canCreateInspection = !isDemoMode() && currentProfile?.role === "OPERATIONS_MANAGER";
+
+  const openNewInspectionForm = () => {
+    if (!canCreateInspection || !isOnline) return;
+    const scheduledDate = toDateInputValue(new Date());
+    try {
+      setNewInspectionDraft({
+        id: generateInspectionId(inspectionRows.map((inspection) => inspection.id), scheduledDate),
+        inspectorValue: inspectorOptions[0]?.value ?? "",
+        type: inspectionTypes[0],
+        area: "",
+        scheduledDate,
+      });
+      setNewInspectionError("");
+    } catch (error) {
+      setNewInspectionError(getSaveErrorMessage(error));
+      return;
+    }
+    setSuccessMessage("");
+    setNewInspectionOpen(true);
+  };
+
+  const createInspection = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canCreateInspection || !newInspectionDraft || isCreatingInspection) return;
+    if (!isOnline) {
+      setNewInspectionError("Connect to the network before creating an Inspection in Supabase.");
+      return;
+    }
+    const selectedInspector = inspectorOptions.find((option) => option.value === newInspectionDraft.inspectorValue);
+    if (!selectedInspector || !newInspectionDraft.area.trim() || !newInspectionDraft.scheduledDate) {
+      setNewInspectionError("Choose an assigned Inspector and enter a location and scheduled date.");
+      return;
+    }
+
+    setIsCreatingInspection(true);
+    setNewInspectionError("");
+    let insertedInspection: Inspection | null = null;
+    try {
+      const latestInspections = await loadSupabaseInspections();
+      const latestId = generateInspectionId(latestInspections.map((inspection) => inspection.id), newInspectionDraft.scheduledDate);
+
+      const createdInspection = await createSupabaseInspection({
+        id: latestId,
+        inspectorEmployeeId: selectedInspector.employeeId,
+        inspectorName: selectedInspector.name,
+        type: newInspectionDraft.type,
+        area: newInspectionDraft.area.trim(),
+        scheduledDate: newInspectionDraft.scheduledDate,
+      });
+      insertedInspection = createdInspection;
+      if (createdInspection.status !== "Scheduled") {
+        throw new Error(`Supabase created ${createdInspection.id} with unexpected status "${createdInspection.status}".`);
+      }
+
+      const refreshRequestId = ++inspectionLoadRequestRef.current;
+      const refreshedInspections = await loadSupabaseInspections();
+      const persistedInspection = refreshedInspections.find((inspection) => inspection.id === createdInspection.id);
+      if (!persistedInspection || persistedInspection.status !== "Scheduled") {
+        throw new Error(`${createdInspection.id} was inserted, but could not be verified as Scheduled when reloading inspections.`);
+      }
+      if (refreshRequestId === inspectionLoadRequestRef.current) setSupabaseInspections(refreshedInspections);
+      setInspectionLoadError("");
+      setNewInspectionOpen(false);
+      setNewInspectionDraft(null);
+      setSuccessMessage(`${persistedInspection.id} created as Scheduled.`);
+    } catch (error) {
+      setNewInspectionError(insertedInspection
+        ? `${insertedInspection.id} was inserted in Supabase, but could not be verified as Scheduled after reloading: ${getSaveErrorMessage(error)}`
+        : `Unable to create this Inspection in Supabase: ${getSaveErrorMessage(error)}`);
+    } finally {
+      setIsCreatingInspection(false);
+    }
+  };
 
   const openFindingForm = () => {
     const defaultInspection = activeInProgress[0] ?? activeScheduled[0];
@@ -271,40 +403,18 @@ export function InspectionsPanel() {
     }
 
     setIsSavingFinding(true);
-    setSyncError("");
     try {
-      let findingCode: string;
-      let cloudSyncPending = !isOnline;
-      let cloudSyncError = "";
-      if (isDemoMode()) {
-        const finding = await saveManualFinding(draft, relatedInspection);
-        findingCode = finding.findingCode;
-        setDemoState(loadDemoState());
-      } else {
-        const record = await saveFindingToLocalQueue(draft, "manual", relatedInspection);
-        findingCode = `F-${record.findingId.replace(/[^a-zA-Z0-9]/g, "").slice(-12).toUpperCase()}`;
-        if (isOnline) {
-          try {
-            const result = await syncPendingOfflineChanges();
-            const currentFindingError = result.errors.find((message) => message.startsWith(`${record.findingId}:`));
-            cloudSyncPending = Boolean(currentFindingError);
-            if (currentFindingError) cloudSyncError = currentFindingError;
-          } catch (error) {
-            cloudSyncPending = true;
-            cloudSyncError = error instanceof Error ? error.message : "Connection to Supabase failed.";
-          }
-        }
-        setSyncError(cloudSyncError);
-      }
+      const finding = isDemoMode() || !isOnline
+        ? await saveManualFinding(draft, relatedInspection)
+        : await saveFindingToSupabase(draft, relatedInspection);
+      if (isDemoMode() || !isOnline) setDemoState(loadDemoState());
       setFindingFormOpen(false);
       setFindingDraft(createEmptyFindingDraft());
       setSuccessMessage(isDemoMode()
-        ? `${findingCode} saved locally.`
+        ? `${finding.findingCode} saved locally.`
         : !isOnline
-          ? "Offline: Finding saved locally. It will be sent to the cloud automatically once the connection is restored."
-          : cloudSyncPending
-            ? ""
-            : `${findingCode} saved locally and synchronized to Supabase.`);
+          ? `${finding.findingCode} saved locally. Pending sync.`
+          : `${finding.findingCode} saved to Supabase with its GPS and evidence.`);
     } catch (error) {
       setFindingFormError(`Unable to save this Finding: ${getSaveErrorMessage(error)}`);
     } finally {
@@ -326,6 +436,16 @@ export function InspectionsPanel() {
           <h1 className="mt-2 text-3xl font-bold text-slate-900">Inspections</h1>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          {canCreateInspection ? (
+            <button
+              type="button"
+              disabled={!isOnline}
+              onClick={openNewInspectionForm}
+              className="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              + Start New Inspection
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={openFindingForm}
@@ -352,11 +472,6 @@ export function InspectionsPanel() {
           {successMessage}
         </p>
       ) : null}
-      {syncError ? (
-        <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
-          Finding is saved locally, but cloud sync failed: {syncError}. The app will retry automatically while online.
-        </p>
-      ) : null}
 
       <div className="grid gap-8 lg:grid-cols-2">
         <InspectionSection title="Scheduled Inspections" inspections={activeScheduled} action="Start" />
@@ -364,6 +479,99 @@ export function InspectionsPanel() {
       </div>
 
       <InspectionSection title="Completed History" inspections={completedHistory} viewableIds={viewableCompletedIds} />
+
+      {newInspectionOpen && newInspectionDraft ? (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/50 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-inspection-heading"
+            className="mx-auto my-4 max-w-2xl rounded-xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6"
+          >
+            <div className="mb-5 border-b border-slate-100 pb-4">
+              <h2 id="new-inspection-heading" className="text-xl font-bold text-slate-900">Start New Inspection</h2>
+              <p className="mt-1 text-sm text-slate-600">This Inspection will be saved as Scheduled and use the standard checklist workflow.</p>
+            </div>
+            <form onSubmit={createInspection} className="space-y-4">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Inspection ID</span>
+                <input readOnly value={newInspectionDraft.id} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-700" />
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">Assigned Inspector <span className="text-red-600">*</span></span>
+                  <select
+                    required
+                    value={newInspectionDraft.inspectorValue}
+                    onChange={(event) => setNewInspectionDraft((current) => current ? { ...current, inspectorValue: event.target.value } : current)}
+                    className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-sky-400 focus:bg-white"
+                  >
+                    <option value="">Select an Inspector</option>
+                    {inspectorOptions.map((inspector) => (
+                      <option key={inspector.value} value={inspector.value}>{inspector.name}</option>
+                    ))}
+                  </select>
+                  {!inspectorOptions.length ? <span className="mt-1 block text-xs text-amber-800">No Inspector profiles are available from the loaded inspections.</span> : null}
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium text-slate-700">Inspection Category / Type <span className="text-red-600">*</span></span>
+                  <select
+                    required
+                    value={newInspectionDraft.type}
+                    onChange={(event) => setNewInspectionDraft((current) => current ? { ...current, type: event.target.value as InspectionType } : current)}
+                    className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-sky-400 focus:bg-white"
+                  >
+                    {inspectionTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Location / Area <span className="text-red-600">*</span></span>
+                <input
+                  required
+                  maxLength={120}
+                  value={newInspectionDraft.area}
+                  onChange={(event) => setNewInspectionDraft((current) => current ? { ...current, area: event.target.value } : current)}
+                  placeholder="Runway 04/22, Taxiway A, Apron North"
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-sky-400 focus:bg-white"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Scheduled Date <span className="text-red-600">*</span></span>
+                <input
+                  required
+                  type="date"
+                  value={newInspectionDraft.scheduledDate}
+                  onChange={(event) => setNewInspectionDraft((current) => current ? { ...current, scheduledDate: event.target.value } : current)}
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-sky-400 focus:bg-white"
+                />
+              </label>
+
+              {newInspectionError ? <p role="alert" className="text-sm font-medium text-red-700">{newInspectionError}</p> : null}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={isCreatingInspection}
+                  onClick={() => {
+                    setNewInspectionOpen(false);
+                    setNewInspectionDraft(null);
+                    setNewInspectionError("");
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={isCreatingInspection || !isOnline || !inspectorOptions.length} className="rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-800 disabled:cursor-wait disabled:opacity-60">
+                  {isCreatingInspection ? "Creating…" : "Create Inspection"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
 
       {findingFormOpen ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/50 p-4">

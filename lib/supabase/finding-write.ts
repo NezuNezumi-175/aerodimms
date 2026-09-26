@@ -1,35 +1,28 @@
 import type { FindingDraft, Inspection } from "@/lib/inspection-data";
 import { createClient } from "@/lib/supabase/client";
+import { insertFindingWithUniqueCode } from "@/lib/supabase/finding-code";
 
-const EVIDENCE_BUCKET = "finding-evidence";
+export const EVIDENCE_BUCKET = "finding-evidence";
 
-export type FindingSyncIdentity = {
-  findingId?: string;
-  findingCode?: string;
-  sourceFindingId?: string;
-};
-
-function safeFileName(fileName: string) {
+export function safeFileName(fileName: string) {
   return fileName.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "image";
 }
 
 export async function saveFindingToSupabase(
   draft: FindingDraft,
-  relatedInspection?: Pick<Inspection, "id" | "area">,
+  relatedInspection?: Inspection,
   checklistItemId?: string,
   existingFindingId?: string,
-  syncIdentity?: FindingSyncIdentity,
 ) {
   const supabase = createClient();
-  const { data: { session }, error: userError } = await supabase.auth.getSession();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError) throw userError;
-  const user = session?.user ?? null;
   if (!user) throw new Error("Sign in before saving a finding to Supabase.");
 
   const idToken = crypto.randomUUID();
-  const findingId = existingFindingId ?? syncIdentity?.findingId ?? `internal-${idToken}`;
-  let sourceFindingId = syncIdentity?.sourceFindingId ?? idToken;
-  let findingCode = syncIdentity?.findingCode ?? `F-MAN-${idToken.slice(0, 8).toUpperCase()}`;
+  const findingId = existingFindingId ?? `internal-${idToken}`;
+  let sourceFindingId = idToken;
+  let findingCode = "";
   if (existingFindingId) {
     const { data, error } = await supabase.from("findings").select("finding_code, source_finding_id").eq("id", existingFindingId).single();
     if (error) throw error;
@@ -48,14 +41,38 @@ export async function saveFindingToSupabase(
   if (profileError) throw profileError;
 
   const uploadedPaths: string[] = [];
+  let serverUpdatedAt: string;
   try {
     const evidenceRows = [];
+    const { data: existingEvidence, error: evidenceReadError } = existingFindingId
+      ? await supabase.from("evidence").select("id, file_name, mime_type, file_size, storage_path").eq("finding_id", findingId)
+      : { data: [], error: null };
+    if (evidenceReadError) throw evidenceReadError;
+    const retainedEvidence = new Set<string>();
     for (const attachment of draft.evidence) {
-      const evidenceId = syncIdentity ? attachment.localId : crypto.randomUUID();
-      const storagePath = `${user.id}/${findingId}/${safeFileName(evidenceId)}-${safeFileName(attachment.fileName)}`;
+      let retained = false;
+      for (const item of existingEvidence ?? []) {
+        if (retainedEvidence.has(item.id) || item.file_name !== attachment.fileName || item.mime_type !== attachment.fileType) continue;
+        if (item.id === attachment.localId) {
+          retained = true;
+        } else if (item.file_size === attachment.fileSize) {
+          const { data: stored, error } = await supabase.storage.from(EVIDENCE_BUCKET).download(item.storage_path);
+          if (error) throw error;
+          const [left, right] = await Promise.all([
+            stored.arrayBuffer().then((bytes) => crypto.subtle.digest("SHA-256", bytes)),
+            attachment.file.arrayBuffer().then((bytes) => crypto.subtle.digest("SHA-256", bytes)),
+          ]);
+          const rightBytes = new Uint8Array(right);
+          retained = new Uint8Array(left).every((byte, index) => byte === rightBytes[index]);
+        }
+        if (retained) { retainedEvidence.add(item.id); break; }
+      }
+      if (retained) continue;
+      const evidenceId = crypto.randomUUID();
+      const storagePath = `${user.id}/${findingId}/${evidenceId}-${safeFileName(attachment.fileName)}`;
       const { error: uploadError } = await supabase.storage
         .from(EVIDENCE_BUCKET)
-        .upload(storagePath, attachment.file, { contentType: attachment.fileType, upsert: Boolean(syncIdentity) });
+        .upload(storagePath, attachment.file, { contentType: attachment.fileType, upsert: false });
       if (uploadError) throw uploadError;
       uploadedPaths.push(storagePath);
       evidenceRows.push({
@@ -75,7 +92,6 @@ export async function saveFindingToSupabase(
       description: draft.description.trim(),
       category: draft.category,
       severity: draft.severity.toUpperCase(),
-      status: "FINDING",
       location_name: draft.area.trim() || relatedInspection?.area || "",
       latitude: gps?.latitude ?? null,
       longitude: gps?.longitude ?? null,
@@ -86,37 +102,23 @@ export async function saveFindingToSupabase(
       checklist_item_id: checklistItemId ?? null,
       updated_at: now,
     };
-    let findingExists = Boolean(existingFindingId);
-    if (syncIdentity && !findingExists) {
-      const { data, error } = await supabase.from("findings").select("id").eq("id", findingId).maybeSingle();
-      if (error) throw error;
-      findingExists = Boolean(data);
-    }
-    const findingResult = findingExists
-      ? await supabase.from("findings").update(findingValues).eq("id", findingId)
-      : await supabase.from("findings").insert({
+    const findingResult = existingFindingId
+      ? await supabase.from("findings").update(findingValues).eq("id", findingId).select("id, updated_at, finding_code").single()
+      : { data: await insertFindingWithUniqueCode({
           ...findingValues,
           id: findingId,
-          finding_code: findingCode,
           source: "INTERNAL_INSPECTION",
+          status: "FINDING",
           created_by_employee_id: profile?.employee_id ?? null,
           created_at: now,
-        });
+        }), error: null };
     const findingError = findingResult.error;
     if (findingError) throw findingError;
+    serverUpdatedAt = findingResult.data.updated_at;
+    findingCode = findingResult.data.finding_code;
 
     if (evidenceRows.length) {
-      const rowsToInsert = syncIdentity
-        ? await (async () => {
-            const { data, error } = await supabase.from("evidence").select("id").in("id", evidenceRows.map((row) => row.id));
-            if (error) throw error;
-            const existingIds = new Set((data ?? []).map((row) => row.id));
-            return evidenceRows.filter((row) => !existingIds.has(row.id));
-          })()
-        : evidenceRows;
-      const { error: evidenceError } = rowsToInsert.length
-        ? await supabase.from("evidence").insert(rowsToInsert)
-        : { error: null };
+      const { error: evidenceError } = await supabase.from("evidence").insert(evidenceRows);
       if (evidenceError) throw evidenceError;
     }
   } catch (error) {
@@ -124,5 +126,5 @@ export async function saveFindingToSupabase(
     throw error;
   }
 
-  return { id: findingId, findingCode };
+  return { id: findingId, findingCode, serverUpdatedAt };
 }

@@ -2,6 +2,7 @@ import { loadDemoState, saveDemoState } from "@/lib/demo-data";
 import type { FindingDraft, Inspection } from "@/lib/inspection-data";
 import type { CompletedInspectionRecord, InternalInspectionFinding } from "@/lib/inspection-data";
 import { getNextManualFindingCode } from "@/lib/manual-finding-id";
+import { isDemoMode } from "@/lib/app-data";
 import { saveOfflineFinding } from "@/lib/offline-db";
 
 function hasValidGps(gps: FindingDraft["gps"]): gps is NonNullable<FindingDraft["gps"]> {
@@ -22,12 +23,13 @@ export async function saveManualFinding(
 ) {
   const state = loadDemoState();
   const existingFindings = state.internalInspectionFindings ?? [];
-  const findingCode = getNextManualFindingCode(state);
+  const findingCode = isDemoMode() ? getNextManualFindingCode(state) : "Pending sync";
+  const internalId = `internal-${crypto.randomUUID()}`;
 
   const now = new Date().toISOString();
   const gps = hasValidGps(draft.gps) ? draft.gps : null;
   const finding: InternalInspectionFinding = {
-    id: `internal-${findingCode}`,
+    id: internalId,
     findingCode,
     source: "INTERNAL_INSPECTION",
     ...(relatedInspection ? {
@@ -36,7 +38,7 @@ export async function saveManualFinding(
       relatedInspector: relatedInspection.inspector,
       relatedInspectionArea: relatedInspection.area,
     } : {}),
-    sourceFindingId: findingCode,
+    sourceFindingId: internalId,
     title: draft.description.trim().slice(0, 120),
     description: draft.description.trim(),
     category: draft.category,
@@ -69,7 +71,9 @@ export async function saveManualFinding(
   const offlineRecordId = `manual:${finding.id}`;
   await saveOfflineFinding({
     id: offlineRecordId,
-    findingId: finding.findingCode,
+    findingId: internalId,
+    internalId,
+    findingCode,
     kind: "manual",
     inspectionId: relatedInspection?.id,
     description: finding.description,
@@ -113,11 +117,11 @@ export function completeInspectionAndTransfer(record: CompletedInspectionRecord)
     );
     if (duplicate) return;
 
-    const findingId = `internal-${completedRecord.inspection.id}-${finding.id}`;
+    const findingId = finding.id.startsWith("internal-") ? finding.id : `internal-${completedRecord.inspection.id}-${finding.id}`;
     const now = completedRecord.completedAt;
     newFindings.push({
       id: findingId,
-      findingCode: `${completedRecord.inspection.id}-${finding.id}`,
+      findingCode: finding.findingCode ?? `${completedRecord.inspection.id}-${finding.id}`,
       source: "INTERNAL_INSPECTION",
       sourceInspectionId: completedRecord.inspection.id,
       sourceFindingId: finding.id,
