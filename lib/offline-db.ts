@@ -55,7 +55,10 @@ export type OfflineFindingWithEvidence = {
 };
 
 const DATABASE_NAME = "aerodimms-offline";
-const DATABASE_VERSION = 1;
+// Keep this at least as high as the schema previously used by this app.
+// IndexedDB rejects an open request that asks for a version below the one
+// already stored by the browser, even when this code only needs older stores.
+const DATABASE_VERSION = 3;
 const FINDINGS_STORE = "findings";
 const PROGRESS_STORE = "inspectionProgress";
 const EVIDENCE_STORE = "evidence";

@@ -138,9 +138,13 @@ export function InspectionsPanel() {
 
   useEffect(() => {
     let active = true;
-    queueMicrotask(() => {
-      if (active) setDemoState(loadDemoState());
-    });
+    if (isDemoMode()) {
+      queueMicrotask(() => {
+        if (active) setDemoState(loadDemoState());
+      });
+    } else {
+      setDemoState({ assets: [], findings: [], workOrders: [], evidence: [], issueHistory: [] });
+    }
     return () => {
       active = false;
     };
@@ -188,7 +192,7 @@ export function InspectionsPanel() {
   }
 
   const inspectionRows = isDemoMode() || !isOnline ? allInspections : supabaseInspections ?? [];
-  const completedRecords = demoState.completedInspectionRecords ?? [];
+  const completedRecords = isDemoMode() ? demoState.completedInspectionRecords ?? [] : [];
   const completedIds = new Set(completedRecords.map((record) => record.inspection.id));
   const activeScheduled = inspectionRows.filter((inspection) => inspection.status === "Scheduled" && !completedIds.has(inspection.id));
   const activeInProgress = inspectionRows.filter((inspection) => inspection.status === "In Progress" && !completedIds.has(inspection.id));
