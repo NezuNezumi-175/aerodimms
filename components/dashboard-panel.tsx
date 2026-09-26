@@ -26,9 +26,15 @@ export function DashboardPanel() {
       ["ASSIGNED", "WORK_ORDER", "IN_PROGRESS", "PENDING_VERIFICATION"].includes(item.status),
     );
     const pendingVerification = state.findings.filter((item) => item.status === "PENDING_VERIFICATION");
+    const SEVERITY_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+
     const urgent = [...state.findings]
       .filter((item) => openFindingStatuses.has(item.status))
-      .sort((a, b) => (a.severity === "CRITICAL" ? -1 : 1))
+      .sort((a, b) => {
+        const scoreA = SEVERITY_ORDER[a.severity] ?? 99;
+        const scoreB = SEVERITY_ORDER[b.severity] ?? 99;
+        return scoreA - scoreB; // 数字が小さい（優先度が高い）順に並ぶ
+      })
       .slice(0, 3);
 
     return {
