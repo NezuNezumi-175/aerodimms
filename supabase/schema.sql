@@ -186,4 +186,55 @@ $$;
 revoke all on function public.update_finding_status(text, text, text, text) from public, anon;
 grant execute on function public.update_finding_status(text, text, text, text) to authenticated;
 
+-- Operation Managers assign a responsible team without changing the issue status.
+-- SECURITY DEFINER keeps assigned_team writes behind the role check in this function.
+create or replace function public.assign_finding_team(
+  p_finding_id text,
+  p_assigned_team text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_employee_id text;
+  v_previous_status text;
+  v_team text := nullif(btrim(p_assigned_team), '');
+begin
+  select employee_id into v_employee_id
+  from public.profiles
+  where id = (select auth.uid()) and role = 'OPERATIONS_MANAGER';
+
+  if v_employee_id is null then
+    raise exception 'An Operation Manager profile is required';
+  end if;
+
+  select status into v_previous_status
+  from public.findings
+  where id = p_finding_id
+  for update;
+
+  if v_previous_status is null then
+    raise exception 'Finding not found';
+  end if;
+
+  update public.findings
+  set assigned_team = v_team, updated_at = now()
+  where id = p_finding_id;
+
+  insert into public.issue_history (
+    id, finding_id, user_employee_id, action, previous_status,
+    new_status, remarks, created_at
+  ) values (
+    gen_random_uuid()::text, p_finding_id, v_employee_id,
+    case when v_team is null then 'Team assignment cleared' else 'Team assigned' end,
+    v_previous_status, v_previous_status, v_team, now()
+  );
+end;
+$$;
+
+revoke all on function public.assign_finding_team(text, text) from public, anon;
+grant execute on function public.assign_finding_team(text, text) to authenticated;
+
 notify pgrst, 'reload schema';

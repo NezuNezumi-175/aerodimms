@@ -23,7 +23,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     ? "bg-emerald-500/15 text-emerald-300"
     : "bg-amber-500/15 text-amber-200";
   const isInspectionRoute = pathname === "/inspections" || pathname.startsWith("/inspections/");
+  const isOperationManagerRoute = pathname === "/operation-manager" || pathname.startsWith("/operation-manager/");
   const canAccessInspections = currentRole === "INSPECTOR" || currentRole === "OPERATIONS_MANAGER";
+  const canManageIssues = currentRole === "OPERATIONS_MANAGER";
 
   useEffect(() => {
     let active = true;
@@ -73,6 +75,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [canAccessInspections, isInspectionRoute, profileLoaded, router]);
 
+  useEffect(() => {
+    if (isOperationManagerRoute && profileLoaded && !canManageIssues) {
+      router.replace("/dashboard");
+    }
+  }, [canManageIssues, isOperationManagerRoute, profileLoaded, router]);
+
   if (pathname === "/login" || pathname === "/") {
     return <>{children}</>;
   }
@@ -83,6 +91,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isInspectionRoute && !canAccessInspections) {
     return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">You do not have access to Inspections.</div>;
+  }
+
+  if (isOperationManagerRoute && !profileLoaded) {
+    return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">Checking access…</div>;
+  }
+
+  if (isOperationManagerRoute && !canManageIssues) {
+    return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">You do not have access to Operation Manager.</div>;
   }
 
   const logout = () => {
@@ -102,6 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/dashboard", label: "Dashboard" },
     ...(canAccessInspections ? [{ href: "/inspections", label: "Inspections" }] : []),
+    ...(canManageIssues ? [{ href: "/operation-manager", label: "Team Assignment" }] : []),
     { href: "/map", label: "Map" },
     { href: "/issues", label: "Issues" },
   ];
