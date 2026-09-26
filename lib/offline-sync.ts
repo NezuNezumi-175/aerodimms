@@ -15,6 +15,22 @@ function errorMessage(error: unknown) {
   return String(error);
 }
 
+type OfflineSyncQueue = Awaited<ReturnType<typeof getOfflineSyncQueue>>;
+
+function canAccessInspections(role: string) {
+  return role === "INSPECTOR" || role === "OPERATIONS_MANAGER";
+}
+
+function queueForRole(queue: OfflineSyncQueue, role: string): OfflineSyncQueue {
+  if (canAccessInspections(role)) return queue;
+  return {
+    // Standalone manual findings can still sync. Inspection-linked findings
+    // and checklist findings remain local for an inspection-capable account.
+    findings: queue.findings.filter(({ record }) => record.kind === "manual" && !record.inspectionId),
+    progress: [],
+  };
+}
+
 async function processQueue(): Promise<OfflineSyncResult> {
   const errors: string[] = [];
   const queue = await getOfflineSyncQueue();
@@ -23,11 +39,17 @@ async function processQueue(): Promise<OfflineSyncResult> {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   if (!user) throw new Error("Sign in to synchronize pending local data.");
-  const { data: profile, error: profileError } = await supabase.from("profiles").select("employee_id").eq("id", user.id).single();
+  const { data: profile, error: profileError } = await supabase.from("profiles").select("employee_id, role").eq("id", user.id).single();
   if (profileError) throw profileError;
-  const inspections = await loadSupabaseInspections();
+  const eligibleQueue = queueForRole(queue, profile.role);
+  if (!eligibleQueue.findings.length && !eligibleQueue.progress.length) {
+    return { errors, pending: false };
+  }
+  const inspections = eligibleQueue.findings.some(({ record }) => record.inspectionId) || eligibleQueue.progress.length
+    ? await loadSupabaseInspections()
+    : [];
   let synchronized = false;
-  for (const finding of queue.findings) {
+  for (const finding of eligibleQueue.findings) {
     if (!navigator.onLine) break;
     try {
       if (finding.record.inspectionId && !inspections.some((item) => item.id === finding.record.inspectionId)) {
@@ -42,7 +64,7 @@ async function processQueue(): Promise<OfflineSyncResult> {
   }
   // Re-read the queue: a finding edited during upload must still block completion.
   const remaining = await getOfflineSyncQueue();
-  for (const progress of queue.progress) {
+  for (const progress of eligibleQueue.progress) {
     if (!navigator.onLine) break;
     try {
       if (remaining.findings.some(({ record }) => record.inspectionId === progress.inspectionId || progress.findingRecordIds.includes(record.id))) {
@@ -66,7 +88,7 @@ async function processQueue(): Promise<OfflineSyncResult> {
       errors.push(`Inspection ${progress.inspectionId}: ${errorMessage(error)}`);
     }
   }
-  const pending = await getOfflineSyncQueue();
+  const pending = queueForRole(await getOfflineSyncQueue(), profile.role);
   if (synchronized) window.dispatchEvent(new Event("aerodimms:sync-completed"));
   return { errors, pending: Boolean(pending.findings.length || pending.progress.length) };
 }
