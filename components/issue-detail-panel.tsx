@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getStoredUser, loadDemoState, saveDemoState, type DemoState, type Finding, type IssueHistoryEntry } from "@/lib/demo-data";
+import { getStoredUser, saveDemoState, type DemoState, type Finding, type IssueHistoryEntry } from "@/lib/demo-data";
+import { createClient } from "@/lib/supabase/client";
+import { isDemoMode, loadAppState } from "@/lib/app-data";
 
 type IssueDetailPanelProps = {
   findingCode: string;
@@ -18,10 +20,13 @@ const statusTransitions: Record<string, string[]> = {
 
 export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   const [state, setState] = useState<DemoState | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
   const currentUser = getStoredUser();
 
   useEffect(() => {
-    setState(loadDemoState());
+    loadAppState().then(setState).catch(() => setState(null));
   }, []);
 
   const finding = useMemo(() => {
@@ -46,8 +51,34 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [finding, state]);
 
-  const updateFindingStatus = (nextStatus: string, action: string, remarks?: string) => {
-    if (!state || !finding) return;
+  const demoMode = isDemoMode();
+
+  const updateFindingStatus = async (nextStatus: string, action: string, remarks?: string) => {
+    if (!state || !finding || isSaving) return;
+    setIsSaving(true);
+    setSaveError("");
+    setSaveMessage("");
+
+    if (!isDemoMode()) {
+      try {
+        const supabase = createClient();
+        const { error } = await supabase.rpc("update_finding_status", {
+          p_finding_id: finding.id,
+          p_new_status: nextStatus,
+          p_action: action,
+          p_remarks: remarks ?? null,
+        });
+        if (error) throw new Error(error.message);
+        const nextState = await loadAppState();
+        setState(nextState);
+        setSaveMessage("Saved to Supabase.");
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : "Could not save this update to Supabase.");
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
 
     const nextFinding: Finding = {
       ...finding,
@@ -74,10 +105,12 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
 
     saveDemoState(nextState);
     setState(nextState);
+    setSaveMessage("Saved in this browser's demo data.");
+    setIsSaving(false);
   };
 
   const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!state || !finding) return;
+    if (!isDemoMode() || !state || !finding) return;
 
     const file = event.target.files?.[0];
     if (!file) return;
@@ -185,9 +218,10 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
               <button
                 type="button"
                 onClick={() => updateFindingStatus(primaryAction.nextStatus, primaryAction.action, primaryAction.action)}
+                disabled={isSaving}
                 className="mt-3 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700"
               >
-                {primaryAction.label}
+                {isSaving ? "Saving…" : primaryAction.label}
               </button>
             ) : (
               <div className="mt-3 rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-600">Closed</div>
@@ -198,6 +232,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
                 <button
                   type="button"
                   onClick={() => updateFindingStatus("CLOSED", "Verify and close", "Accepted by verifier")}
+                  disabled={isSaving}
                   className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
                 >
                   Verify & Close
@@ -205,12 +240,15 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
                 <button
                   type="button"
                   onClick={() => updateFindingStatus("IN_PROGRESS", "Return for further action", "Returned for additional work")}
+                  disabled={isSaving}
                   className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100"
                 >
                   Return for Further Action
                 </button>
               </div>
             ) : null}
+            {saveError ? <p role="alert" className="text-sm text-red-700">{saveError}</p> : null}
+            {saveMessage ? <p role="status" className="text-sm text-emerald-700">{saveMessage}</p> : null}
           </div>
         </div>
 
@@ -226,10 +264,12 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
             ) : (
               <p className="text-sm text-slate-500">No evidence uploaded.</p>
             )}
-            <label className="mt-3 inline-flex cursor-pointer rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100">
-              Upload Evidence
-              <input type="file" className="hidden" onChange={handleUpload} />
-            </label>
+            {demoMode ? (
+              <label className="mt-3 inline-flex cursor-pointer rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100">
+                Upload Evidence
+                <input type="file" className="hidden" onChange={handleUpload} />
+              </label>
+            ) : null}
           </div>
         </div>
       </div>

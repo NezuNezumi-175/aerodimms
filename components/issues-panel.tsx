@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { loadDemoState, type DemoState } from "@/lib/demo-data";
+import { loadAppState } from "@/lib/app-data";
+import type { DemoState } from "@/lib/demo-data";
 
 export function IssuesPanel() {
   const router = useRouter();
@@ -11,7 +12,7 @@ export function IssuesPanel() {
   const [state, setState] = useState<DemoState | null>(null);
 
   useEffect(() => {
-    setState(loadDemoState());
+    loadAppState().then(setState).catch(() => setState(null));
   }, []);
 
   const updateQuery = (key: string, value: string) => {

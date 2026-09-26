@@ -51,3 +51,81 @@ begin
     execute format('grant select on public.%I to authenticated', t);
   end loop;
 end $$;
+
+-- Allow authenticated users to change a finding's status and record the change
+-- atomically through the update_finding_status RPC.
+drop policy if exists "Authenticated users can update finding status" on public.findings;
+create policy "Authenticated users can update finding status"
+on public.findings for update to authenticated
+using (true) with check (true);
+grant update (status, updated_at) on public.findings to authenticated;
+
+drop policy if exists "Authenticated users can record own finding history" on public.issue_history;
+create policy "Authenticated users can record own finding history"
+on public.issue_history for insert to authenticated
+with check (
+  user_employee_id in (
+    select employee_id from public.profiles where id = (select auth.uid())
+  )
+);
+grant insert (id, finding_id, user_employee_id, action, previous_status, new_status, remarks, created_at)
+on public.issue_history to authenticated;
+
+create or replace function public.update_finding_status(
+  p_finding_id text,
+  p_new_status text,
+  p_action text,
+  p_remarks text default null
+)
+returns void
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_employee_id text;
+  v_previous_status text;
+begin
+  select employee_id into v_employee_id
+  from public.profiles
+  where id = (select auth.uid());
+
+  if v_employee_id is null then
+    raise exception 'A linked AeroDIMMS profile is required';
+  end if;
+
+  select status into v_previous_status
+  from public.findings
+  where id = p_finding_id
+  for update;
+
+  if v_previous_status is null then
+    raise exception 'Finding not found';
+  end if;
+
+  if not (
+    (v_previous_status = 'FINDING' and p_new_status = 'ASSIGNED') or
+    (v_previous_status = 'ASSIGNED' and p_new_status = 'WORK_ORDER') or
+    (v_previous_status = 'WORK_ORDER' and p_new_status = 'IN_PROGRESS') or
+    (v_previous_status = 'IN_PROGRESS' and p_new_status = 'PENDING_VERIFICATION') or
+    (v_previous_status = 'PENDING_VERIFICATION' and p_new_status in ('CLOSED', 'IN_PROGRESS'))
+  ) then
+    raise exception 'Invalid finding status transition';
+  end if;
+
+  update public.findings
+  set status = p_new_status, updated_at = now()
+  where id = p_finding_id;
+
+  insert into public.issue_history (
+    id, finding_id, user_employee_id, action, previous_status,
+    new_status, remarks, created_at
+  ) values (
+    gen_random_uuid()::text, p_finding_id, v_employee_id, p_action,
+    v_previous_status, p_new_status, p_remarks, now()
+  );
+end;
+$$;
+
+revoke all on function public.update_finding_status(text, text, text, text) from public, anon;
+grant execute on function public.update_finding_status(text, text, text, text) to authenticated;

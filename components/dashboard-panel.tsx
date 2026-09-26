@@ -3,18 +3,18 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
-  loadDemoState,
   openFindingStatuses,
   severityColors,
   type DemoState,
   type Severity,
 } from "@/lib/demo-data";
+import { loadAppState } from "@/lib/app-data";
 
 export function DashboardPanel() {
   const [state, setState] = useState<DemoState | null>(null);
 
   useEffect(() => {
-    setState(loadDemoState());
+    loadAppState().then(setState).catch(() => setState(null));
   }, []);
 
   const dashboard = useMemo(() => {

@@ -8,13 +8,13 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 maplibregl.config.WORKER_URL = "/maplibre-gl-worker.mjs";
 import {
-  loadDemoState,
   openFindingStatuses,
   severityColors,
   type Asset,
   type DemoState,
   type Finding,
 } from "@/lib/demo-data";
+import { loadAppState } from "@/lib/app-data";
 
 type AirportStand = {
   code: string;
@@ -39,7 +39,7 @@ export function MapPanel() {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
 
   useEffect(() => {
-    setState(loadDemoState());
+    loadAppState().then(setState).catch(() => setState(null));
   }, []);
 
   useEffect(() => {
