@@ -75,6 +75,7 @@ export interface WorkOrder {
 export interface EvidenceItem {
   id: string;
   findingId: string;
+  phase?: "BEFORE" | "AFTER";
   fileName: string;
   storagePath: string;
   previewUrl?: string;
@@ -141,11 +142,11 @@ export const workOrders: WorkOrder[] = [
 ];
 
 export const evidence: EvidenceItem[] = [
-  { id: "ev-1", findingId: "f-101", fileName: "before-repair.jpg", storagePath: "evidence/f-101/before-repair.jpg", mimeType: "image/jpeg", uploadedBy: "PEN23456", createdAt: "2026-09-15T09:40:00Z" },
-  { id: "ev-2", findingId: "f-101", fileName: "after-repair.jpg", storagePath: "evidence/f-101/after-repair.jpg", mimeType: "image/jpeg", uploadedBy: "PEN12345", createdAt: "2026-09-25T15:10:00Z" },
+  { id: "ev-1", findingId: "f-101", phase: "BEFORE", fileName: "before-repair.jpg", storagePath: "evidence/f-101/before-repair.jpg", mimeType: "image/jpeg", uploadedBy: "PEN23456", createdAt: "2026-09-15T09:40:00Z" },
+  { id: "ev-2", findingId: "f-101", phase: "AFTER", fileName: "after-repair.jpg", storagePath: "evidence/f-101/after-repair.jpg", mimeType: "image/jpeg", uploadedBy: "PEN12345", createdAt: "2026-09-25T15:10:00Z" },
   { id: "ev-3", findingId: "f-103", fileName: "wildlife-record.pdf", storagePath: "evidence/f-103/wildlife-record.pdf", mimeType: "application/pdf", uploadedBy: "PEN34567", createdAt: "2026-09-18T10:45:00Z" },
   { id: "ev-4", findingId: "f-110", fileName: "drainage-check.jpg", storagePath: "evidence/f-110/drainage-check.jpg", mimeType: "image/jpeg", uploadedBy: "PEN12345", createdAt: "2026-09-17T14:25:00Z" },
-  { id: "ev-5", findingId: "f-105", fileName: "signage-before.jpg", storagePath: "evidence/f-105/signage-before.jpg", mimeType: "image/jpeg", uploadedBy: "PEN23456", createdAt: "2026-09-11T08:30:00Z" },
+  { id: "ev-5", findingId: "f-105", phase: "BEFORE", fileName: "signage-before.jpg", storagePath: "evidence/f-105/signage-before.jpg", mimeType: "image/jpeg", uploadedBy: "PEN23456", createdAt: "2026-09-11T08:30:00Z" },
 ];
 
 export const issueHistory: IssueHistoryEntry[] = [

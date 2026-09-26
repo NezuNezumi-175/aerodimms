@@ -69,6 +69,7 @@ type SupabaseWorkOrder = {
 type SupabaseEvidence = {
   id: string;
   finding_id: string;
+  phase: "BEFORE" | "AFTER" | null;
   file_name: string;
   storage_path: string;
   mime_type: string;
@@ -102,7 +103,7 @@ function mapWorkOrder(row: SupabaseWorkOrder): WorkOrder {
 }
 
 function mapEvidence(row: SupabaseEvidence): EvidenceItem {
-  return { id: row.id, findingId: row.finding_id, fileName: row.file_name, storagePath: row.storage_path, mimeType: row.mime_type, uploadedBy: row.uploaded_by_employee_id ?? "", createdAt: row.created_at };
+  return { id: row.id, findingId: row.finding_id, phase: row.phase ?? undefined, fileName: row.file_name, storagePath: row.storage_path, mimeType: row.mime_type, uploadedBy: row.uploaded_by_employee_id ?? "", createdAt: row.created_at };
 }
 
 function mapHistory(row: SupabaseHistory): IssueHistoryEntry {

@@ -9,6 +9,21 @@ import Image from "next/image";
 import Link from "next/link";
 import type { InternalInspectionFinding } from "@/lib/inspection-data";
 import { getOfflineEvidenceForFinding } from "@/lib/offline-db";
+import { EVIDENCE_BUCKET, safeFileName } from "@/lib/supabase/finding-write";
+
+type EvidencePhase = "BEFORE" | "AFTER";
+const evidencePhaseLabel: Record<EvidencePhase, string> = { BEFORE: "Before work", AFTER: "After work" };
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    const detail = "details" in error && typeof error.details === "string" ? error.details : "";
+    const hint = "hint" in error && typeof error.hint === "string" ? error.hint : "";
+    return [error.message, detail, hint].filter(Boolean).join(" — ");
+  }
+  if (typeof error === "string") return error;
+  return fallback;
+}
 
 type IssueDetailPanelProps = {
   findingCode: string;
@@ -16,6 +31,7 @@ type IssueDetailPanelProps = {
 
 type IssueEvidenceDisplay = {
   id: string;
+  phase?: EvidencePhase;
   fileName: string;
   mimeType: string;
   fileSize?: number;
@@ -144,10 +160,16 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [finding, state]);
 
-  const demoMode = isDemoMode();
+  const hasBeforePhoto = evidenceItems.some((item) => item.phase === "BEFORE");
+  const hasAfterPhoto = evidenceItems.some((item) => item.phase === "AFTER");
+  const hasRequiredEvidence = hasBeforePhoto && hasAfterPhoto;
 
   const updateFindingStatus = async (nextStatus: string, action: string, remarks?: string) => {
     if (!state || !finding || isSaving || "sourceFindingId" in finding) return;
+    if (nextStatus === "PENDING_VERIFICATION" && !hasRequiredEvidence) {
+      setSaveError("Upload one before-work photo and one after-work photo before submitting for verification.");
+      return;
+    }
     setIsSaving(true);
     setSaveError("");
     setSaveMessage("");
@@ -202,15 +224,58 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
     setIsSaving(false);
   };
 
-  const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!isDemoMode() || !state || !finding) return;
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>, phase: EvidencePhase) => {
+    if (!state || !finding) return;
 
     const file = event.target.files?.[0];
     if (!file) return;
 
+    event.target.value = "";
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      setSaveError("Use a JPG, PNG, or WebP image up to 10 MB.");
+      return;
+    }
+    setSaveError("");
+    setSaveMessage("");
+
+    if (!isDemoMode()) {
+      setIsSaving(true);
+      let uploadedStoragePath: string | null = null;
+      try {
+        const supabase = createClient();
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        if (!user) throw new Error("Sign in before uploading evidence.");
+        const id = crypto.randomUUID();
+        const storagePath = `${user.id}/${finding.id}/${id}-${safeFileName(file.name)}`;
+        const { error: uploadError } = await supabase.storage.from(EVIDENCE_BUCKET)
+          .upload(storagePath, file, { contentType: file.type, upsert: false });
+        if (uploadError) throw uploadError;
+        uploadedStoragePath = storagePath;
+        const { data: profile, error: profileError } = await supabase.from("profiles").select("employee_id").eq("id", user.id).maybeSingle();
+        if (profileError) throw profileError;
+        const { error: insertError } = await supabase.from("evidence").insert({
+          id, finding_id: finding.id, phase, file_name: file.name, storage_path: storagePath,
+          mime_type: file.type, file_size: file.size, uploaded_by_employee_id: profile?.employee_id ?? null,
+          created_at: new Date().toISOString(),
+        });
+        if (insertError) throw insertError;
+        uploadedStoragePath = null;
+        setState(await loadAppState());
+        setSaveMessage(`${evidencePhaseLabel[phase]} photo uploaded.`);
+      } catch (error) {
+        if (uploadedStoragePath) await createClient().storage.from(EVIDENCE_BUCKET).remove([uploadedStoragePath]).catch(() => undefined);
+        setSaveError(getErrorMessage(error, "Could not upload this photo."));
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
     const evidenceItem = {
       id: `ev-${Math.random().toString(36).slice(2, 9)}`,
       findingId: finding.id,
+      phase,
       fileName: file.name,
       storagePath: `evidence/${finding.id}/${file.name}`,
       mimeType: file.type || "application/octet-stream",
@@ -227,7 +292,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
           id: `h-${Math.random().toString(36).slice(2, 9)}`,
           findingId: finding.id,
           userId: currentUser?.employee_id ?? "PEN12345",
-          action: "Evidence uploaded",
+          action: `${evidencePhaseLabel[phase]} evidence uploaded`,
           previousStatus: finding.status,
           newStatus: finding.status,
           remarks: file.name,
@@ -238,7 +303,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
 
     saveDemoState(nextState);
     setState(nextState);
-    event.target.value = "";
+    setSaveMessage(`${evidencePhaseLabel[phase]} photo added.`);
   };
 
   if (!state || !finding) {
@@ -354,7 +419,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
               <button
                 type="button"
                 onClick={() => updateFindingStatus(primaryAction.nextStatus, primaryAction.action, primaryAction.action)}
-                disabled={isSaving}
+                disabled={isSaving || (primaryAction.nextStatus === "PENDING_VERIFICATION" && !hasRequiredEvidence)}
                 className="mt-3 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700"
               >
                 {isSaving ? "Saving…" : primaryAction.label}
@@ -362,6 +427,9 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
             ) : (
               <div className="mt-3 rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-600">Closed</div>
             )}
+            {finding.status === "IN_PROGRESS" && !hasRequiredEvidence ? (
+              <p className="text-sm text-amber-800">Before-work and after-work photos are required. Missing: {[!hasBeforePhoto ? "before work" : null, !hasAfterPhoto ? "after work" : null].filter(Boolean).join(" and ")}.</p>
+            ) : null}
 
             {finding.status === "PENDING_VERIFICATION" ? (
               <div className="flex flex-wrap gap-3 pt-2">
@@ -399,6 +467,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
                     <Image src={item.previewUrl} alt={`Preview of ${item.fileName}`} width={64} height={64} unoptimized className="h-16 w-16 shrink-0 rounded-md object-cover" />
                   ) : null}
                   <div className="min-w-0">
+                    {item.phase ? <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">{evidencePhaseLabel[item.phase]}</p> : <p className="text-xs font-semibold text-amber-700">Unclassified legacy evidence</p>}
                     <p className="break-all font-medium">{item.fileName}</p>
                     <p className="mt-1 text-xs text-slate-500">
                       {item.mimeType}{item.fileSize !== undefined ? ` · ${formatEvidenceSize(item.fileSize)}` : ""}
@@ -409,11 +478,19 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
             ) : (
               <p className="text-sm text-slate-500">No evidence uploaded.</p>
             )}
-            {demoMode ? (
-              <label className="mt-3 inline-flex cursor-pointer rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100">
-                Upload Evidence
-                <input type="file" className="hidden" onChange={handleUpload} />
-              </label>
+            {finding.status === "IN_PROGRESS" && !internalFinding ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {(["BEFORE", "AFTER"] as const).map((phase) => {
+                  const uploaded = phase === "BEFORE" ? hasBeforePhoto : hasAfterPhoto;
+                  return (
+                    <label key={phase} className={`inline-flex cursor-pointer flex-col rounded-xl border border-dashed px-4 py-3 text-sm font-medium ${uploaded ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"}`}>
+                      <span>{uploaded ? "Add another" : "Upload"} {evidencePhaseLabel[phase]} Photo</span>
+                      <span className="mt-1 text-xs font-normal">JPG, PNG, or WebP · up to 10 MB</span>
+                      <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="sr-only" disabled={isSaving} onChange={(event) => void handleUpload(event, phase)} />
+                    </label>
+                  );
+                })}
+              </div>
             ) : null}
           </div>
         </div>

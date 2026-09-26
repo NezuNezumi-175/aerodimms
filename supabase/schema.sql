@@ -28,17 +28,52 @@ create table if not exists public.work_orders (
 create table if not exists public.evidence (
   id text primary key, finding_id text not null references public.findings(id) on delete cascade,
   file_name text not null, storage_path text not null, mime_type text not null,
+  phase text check (phase in ('BEFORE', 'AFTER')),
   file_size bigint,
   uploaded_by_employee_id text references public.profiles(employee_id) on update cascade on delete set null,
   created_at timestamptz not null
 );
 -- Keep reruns on existing databases compatible with the current upload metadata.
 alter table public.evidence add column if not exists file_size bigint;
+alter table public.evidence add column if not exists phase text;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.evidence'::regclass and conname = 'evidence_phase_check'
+  ) then
+    alter table public.evidence add constraint evidence_phase_check check (phase in ('BEFORE', 'AFTER'));
+  end if;
+end $$;
 create table if not exists public.issue_history (
   id text primary key, finding_id text not null references public.findings(id) on delete cascade,
   user_employee_id text references public.profiles(employee_id) on update cascade on delete set null,
   action text not null, previous_status text, new_status text, remarks text, created_at timestamptz not null
 );
+
+-- Enforce required work photos for every update path, including direct table updates.
+create or replace function public.require_finding_work_photos()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if old.status = 'IN_PROGRESS' and new.status = 'PENDING_VERIFICATION' and not (
+    exists (select 1 from public.evidence where finding_id = old.id and phase = 'BEFORE')
+    and exists (select 1 from public.evidence where finding_id = old.id and phase = 'AFTER')
+  ) then
+    raise exception 'A before-work photo and an after-work photo are required before verification';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists findings_require_work_photos on public.findings;
+create trigger findings_require_work_photos
+before update of status on public.findings
+for each row execute function public.require_finding_work_photos();
+
 alter table public.assets enable row level security;
 alter table public.findings enable row level security;
 alter table public.work_orders enable row level security;
@@ -54,6 +89,10 @@ begin
     execute format('grant select on public.%I to authenticated', t);
   end loop;
 end $$;
+
+-- Evidence uploads are authorized by the RLS policy in inspection-schema.sql.
+-- Keep the table privilege in place when this schema is re-run after that file.
+grant insert on public.evidence to authenticated;
 
 -- Allow signed-in users to create findings. Inspection-specific columns and
 -- nullable GPS are added by inspection-schema.sql.
@@ -121,6 +160,13 @@ begin
     (v_previous_status = 'PENDING_VERIFICATION' and p_new_status in ('CLOSED', 'IN_PROGRESS'))
   ) then
     raise exception 'Invalid finding status transition';
+  end if;
+
+  if v_previous_status = 'IN_PROGRESS' and p_new_status = 'PENDING_VERIFICATION' and not (
+    exists (select 1 from public.evidence where finding_id = p_finding_id and phase = 'BEFORE')
+    and exists (select 1 from public.evidence where finding_id = p_finding_id and phase = 'AFTER')
+  ) then
+    raise exception 'A before-work photo and an after-work photo are required before verification';
   end if;
 
   update public.findings

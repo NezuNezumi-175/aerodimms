@@ -1,6 +1,6 @@
-id,finding_id,file_name,storage_path,mime_type,uploaded_by_employee_id,created_at
-ev-1,f-101,before-repair.jpg,evidence/f-101/before-repair.jpg,image/jpeg,PEN23456,2026-09-15T09:40:00Z
-ev-2,f-101,after-repair.jpg,evidence/f-101/after-repair.jpg,image/jpeg,PEN12345,2026-09-25T15:10:00Z
-ev-3,f-103,wildlife-record.pdf,evidence/f-103/wildlife-record.pdf,application/pdf,PEN34567,2026-09-18T10:45:00Z
-ev-4,f-110,drainage-check.jpg,evidence/f-110/drainage-check.jpg,image/jpeg,PEN12345,2026-09-17T14:25:00Z
-ev-5,f-105,signage-before.jpg,evidence/f-105/signage-before.jpg,image/jpeg,PEN23456,2026-09-11T08:30:00Z
+id,finding_id,file_name,storage_path,mime_type,phase,uploaded_by_employee_id,created_at
+ev-1,f-101,before-repair.jpg,evidence/f-101/before-repair.jpg,image/jpeg,BEFORE,PEN23456,2026-09-15T09:40:00Z
+ev-2,f-101,after-repair.jpg,evidence/f-101/after-repair.jpg,image/jpeg,AFTER,PEN12345,2026-09-25T15:10:00Z
+ev-3,f-103,wildlife-record.pdf,evidence/f-103/wildlife-record.pdf,application/pdf,,PEN34567,2026-09-18T10:45:00Z
+ev-4,f-110,drainage-check.jpg,evidence/f-110/drainage-check.jpg,image/jpeg,,PEN12345,2026-09-17T14:25:00Z
+ev-5,f-105,signage-before.jpg,evidence/f-105/signage-before.jpg,image/jpeg,BEFORE,PEN23456,2026-09-11T08:30:00Z
