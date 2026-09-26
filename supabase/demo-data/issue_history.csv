@@ -1,0 +1,10 @@
+id,finding_id,user_employee_id,action,previous_status,new_status,remarks,created_at
+h-1,f-101,PEN23456,Finding created,,FINDING,,2026-09-15T08:42:00Z
+h-2,f-101,PEN23456,Finding assigned to AGL Team,FINDING,ASSIGNED,,2026-09-15T09:25:00Z
+h-3,f-101,PEN12345,Work Order WO-201 created,ASSIGNED,WORK_ORDER,,2026-09-15T09:42:00Z
+h-4,f-101,PEN12345,Corrective action started,WORK_ORDER,IN_PROGRESS,,2026-09-16T10:30:00Z
+h-5,f-101,PEN12345,Evidence uploaded,IN_PROGRESS,IN_PROGRESS,after-repair.jpg,2026-09-25T15:10:00Z
+h-6,f-101,PEN34567,Submitted for verification,IN_PROGRESS,PENDING_VERIFICATION,,2026-09-25T15:35:00Z
+h-7,f-103,PEN34567,Finding created,,FINDING,,2026-09-18T10:15:00Z
+h-8,f-103,PEN34567,Submitted for verification,IN_PROGRESS,PENDING_VERIFICATION,,2026-09-25T10:37:00Z
+h-9,f-107,PEN12345,Finding closed,PENDING_VERIFICATION,CLOSED,,2026-09-20T17:30:00Z

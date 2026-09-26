@@ -1,0 +1,6 @@
+id,work_order_code,finding_id,assigned_to_employee_id,assigned_team,corrective_action,target_completion_date,remarks,status,created_at,updated_at
+wo-201,WO-201,f-101,PEN12345,AGL Maintenance,Replace damaged runway edge light.,2026-09-27,Use replacement kit 04-A.,In Progress,2026-09-15T09:15:00Z,2026-09-25T15:15:00Z
+wo-202,WO-202,f-102,PEN12345,Pavement Team,Repair surface spalling at Taxiway A.,2026-09-29,,Assigned,2026-09-14T10:05:00Z,2026-09-25T13:50:00Z
+wo-203,WO-203,f-105,PEN12345,Signage Team,Replace damaged runway sign and inspect fasteners.,2026-09-30,,In Progress,2026-09-11T08:00:00Z,2026-09-25T12:25:00Z
+wo-204,WO-204,f-110,PEN12345,Civil Works,Clear blocked drain and inspect apron grading.,2026-09-26,,In Progress,2026-09-17T14:00:00Z,2026-09-25T14:55:00Z
+wo-205,WO-205,f-108,PEN12345,Marking Team,Evaluate and reapply threshold markings.,2026-09-28,,In Progress,2026-09-20T12:00:00Z,2026-09-25T09:16:00Z

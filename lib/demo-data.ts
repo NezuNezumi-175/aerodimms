@@ -84,7 +84,6 @@ export interface IssueHistoryEntry {
 }
 
 export interface DemoState {
-  profiles: UserProfile[];
   assets: Asset[];
   findings: Finding[];
   workOrders: WorkOrder[];
@@ -93,12 +92,6 @@ export interface DemoState {
 }
 
 export const STORAGE_KEY = "aerodimms-demo-state";
-
-export const profiles: UserProfile[] = [
-  { id: "u-1", employeeId: "PEN12345", fullName: "Amin Rahman", role: "MAINTENANCE_ENGINEER" },
-  { id: "u-2", employeeId: "PEN23456", fullName: "Nadia Ismail", role: "INSPECTOR" },
-  { id: "u-3", employeeId: "PEN34567", fullName: "Harith Lim", role: "OPERATIONS_MANAGER" },
-];
 
 export const assets: Asset[] = [
   { id: "asset-1", assetCode: "AGL-001", name: "Runway Edge Light 04-A", assetType: "Aeronautical Ground Light", status: "Operational", locationName: "Runway 04", latitude: 5.298179, longitude: 100.274163 },
@@ -155,7 +148,6 @@ export const issueHistory: IssueHistoryEntry[] = [
 ];
 
 export const defaultState: DemoState = {
-  profiles,
   assets,
   findings,
   workOrders,

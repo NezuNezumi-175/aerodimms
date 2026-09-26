@@ -1,0 +1,11 @@
+id,asset_code,name,asset_type,status,location_name,latitude,longitude
+asset-1,AGL-001,Runway Edge Light 04-A,Aeronautical Ground Light,Operational,Runway 04,5.298179,100.274163
+asset-2,AGL-002,Runway Edge Light 04-B,Aeronautical Ground Light,Operational,Runway 04,5.29879,100.273973
+asset-3,AGL-003,Runway Edge Light 22-A,Aeronautical Ground Light,Operational,Runway 22,5.29584,100.27628
+asset-4,RUNWAY-LIGHT-001,Runway Centerline Light,Runway Lighting,Operational,Runway 04,5.297827,100.275256
+asset-5,RUNWAY-LIGHT-002,Threshold Lighting,Runway Lighting,Operational,Runway 22,5.295213,100.275766
+asset-6,TAXIWAY-SIGN-001,Taxiway A Sign,Airfield Signage,Operational,Taxiway A,5.299211,100.277181
+asset-7,APRON-LIGHT-001,Apron Flood Light 2,Apron Lighting,Degraded,Apron South,5.300819,100.279716
+asset-8,FENCE-001,Perimeter Fence Segment,Security Fence,Operational,Northern Boundary,5.302563,100.27257
+asset-9,RUNWAY-SIGN-003,Runway 04 Holding Mark,Surface Marking,Operational,Holding Bay,5.29712,100.272838
+asset-10,APRON-SURFACE-010,Apron Surface Panel,Surface Asset,Monitoring,Apron East,5.301357,100.28182
