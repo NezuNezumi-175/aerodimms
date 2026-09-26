@@ -41,6 +41,7 @@ export function FindingForm({
   draft,
   onDraftChange,
   onSave,
+  isSaving = false,
   onCancel,
   onCaptureGps,
   gpsLoading,
@@ -58,6 +59,7 @@ export function FindingForm({
   draft: FindingDraft;
   onDraftChange: (update: Partial<FindingDraft>) => void;
   onSave: (draft: FindingDraft) => void;
+  isSaving?: boolean;
   onCancel: () => void;
   onCaptureGps: () => void;
   gpsLoading: boolean;
@@ -247,14 +249,14 @@ export function FindingForm({
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
-            disabled={gpsLoading}
+            disabled={gpsLoading || isSaving}
             onClick={onCancel}
             className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
-          <button type="submit" className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-800">
-            Save Finding
+          <button type="submit" disabled={isSaving} className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:cursor-wait disabled:opacity-60">
+            {isSaving ? "Uploading and saving…" : "Save Finding"}
           </button>
         </div>
       </form>

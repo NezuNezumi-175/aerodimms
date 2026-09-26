@@ -1,0 +1,9 @@
+id,inspector_employee_id,inspector_name,inspection_type,area,scheduled_date,status,completed_at,created_at,updated_at
+INSP-2026-09-27-01,,Aiko Tanaka,Runway Surface Inspection,Runway 04/22,2026-09-27,Scheduled,,2026-09-26T08:00:00Z,2026-09-26T08:00:00Z
+INSP-2026-09-28-02,,Kenji Sato,Airfield Lighting Inspection,Taxiway A,2026-09-28,Scheduled,,2026-09-26T08:00:00Z,2026-09-26T08:00:00Z
+INSP-2026-09-26-01,,Yuki Nakamura,Pavement Condition Inspection,Runway 04/22,2026-09-26,In Progress,,2026-09-26T07:00:00Z,2026-09-26T07:00:00Z
+INSP-2026-09-26-02,,Hiroshi Mori,Taxiway Safety Inspection,Taxiway A,2026-09-26,In Progress,,2026-09-26T07:15:00Z,2026-09-26T07:15:00Z
+INSP-2026-09-25-03,,Aiko Tanaka,Apron Operations Inspection,Apron North,2026-09-25,In Progress,,2026-09-25T06:30:00Z,2026-09-25T06:30:00Z
+INSP-2026-09-15-01,,Kenji Sato,Runway Surface Inspection,Runway 04/22,2026-09-15,Completed,2026-09-15T09:00:00Z,2026-09-15T06:00:00Z,2026-09-15T09:00:00Z
+INSP-2026-09-15-02,,Yuki Nakamura,Airfield Lighting Inspection,Taxiway A,2026-09-15,Completed,2026-09-15T10:30:00Z,2026-09-15T07:00:00Z,2026-09-15T10:30:00Z
+INSP-2026-09-14-03,,Hiroshi Mori,Apron Operations Inspection,Apron North,2026-09-14,Completed,2026-09-14T11:00:00Z,2026-09-14T07:00:00Z,2026-09-14T11:00:00Z

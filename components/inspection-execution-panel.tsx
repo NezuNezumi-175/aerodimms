@@ -14,11 +14,21 @@ import {
   type FindingCategory,
   type FindingSeverity,
   type GpsLocation,
+  type Inspection,
   type InspectionStatus,
 } from "@/lib/inspection-data";
 import { loadDemoState } from "@/lib/demo-data";
+import { isDemoMode } from "@/lib/app-data";
 import { createFindingEvidence, requestFindingGps } from "@/lib/finding-form";
 import { completeInspectionAndTransfer } from "@/lib/inspection-workflow";
+import { saveFindingToSupabase } from "@/lib/supabase/finding-write";
+import {
+  completeSupabaseInspection,
+  loadSupabaseInspectionExecution,
+  loadSupabaseInspections,
+  markSupabaseInspectionInProgress,
+  saveSupabaseChecklistAnswers,
+} from "@/lib/supabase/inspection-write";
 
 type ChecklistResult = "Pass" | "Fail" | "N/A";
 type ChecklistAnswer = { result?: ChecklistResult; remark: string };
@@ -48,6 +58,16 @@ function createEmptyFindingDraft(area = ""): FindingDraft {
   return { description: "", category: "", severity: "", area, remarks: "", gps: null, evidence: [] };
 }
 
+function getSaveErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    const details = "details" in error && typeof error.details === "string" ? error.details : "";
+    const hint = "hint" in error && typeof error.hint === "string" ? error.hint : "";
+    return [error.message, details, hint].filter(Boolean).join(" — ");
+  }
+  return "Please check the Supabase configuration and try again.";
+}
+
 function resultButtonClass(result: ChecklistResult, selected: boolean) {
   if (!selected) return "border-slate-200 bg-white text-slate-600 hover:bg-slate-50";
   if (result === "Pass") return "border-emerald-600 bg-emerald-600 text-white";
@@ -56,7 +76,7 @@ function resultButtonClass(result: ChecklistResult, selected: boolean) {
 }
 
 export function InspectionExecutionPanel({ inspectionId }: { inspectionId: string }) {
-  const inspection = allInspections.find((item) => item.id === inspectionId);
+  const [inspection, setInspection] = useState<Inspection | undefined>(() => allInspections.find((item) => item.id === inspectionId));
   const [answers, setAnswers] = useState<Record<string, ChecklistAnswer>>({});
   const [findings, setFindings] = useState<LocalFinding[]>([]);
   const [findingFormFor, setFindingFormFor] = useState<string | null>(null);
@@ -68,6 +88,10 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
   const [evidenceError, setEvidenceError] = useState("");
   const [saveNotice, setSaveNotice] = useState(false);
   const [completionLoadedFor, setCompletionLoadedFor] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [findingSaving, setFindingSaving] = useState(false);
+  const [progressSaving, setProgressSaving] = useState(false);
+  const [progressError, setProgressError] = useState("");
   const [completedRecord, setCompletedRecord] = useState<CompletedInspectionRecord | null>(null);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -79,24 +103,43 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
 
   useEffect(() => {
     let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
+    const load = async () => {
       try {
-        const demoState = loadDemoState();
-        const record = demoState.completedInspectionRecords?.find(
-          (item) => item.inspection.id === inspectionId,
-        ) ?? null;
-        setCompletedRecord(record);
-        setTransferredCount(
-          (demoState.internalInspectionFindings ?? []).filter(
-            (finding) => finding.sourceInspectionId === inspectionId,
-          ).length,
-        );
-      } catch {
-        setCompletedRecord(null);
+        if (isDemoMode()) {
+          const demoState = loadDemoState();
+          const record = demoState.completedInspectionRecords?.find((item) => item.inspection.id === inspectionId) ?? null;
+          if (!active) return;
+          setCompletedRecord(record);
+          setTransferredCount((demoState.internalInspectionFindings ?? []).filter((finding) => finding.sourceInspectionId === inspectionId).length);
+        } else {
+          const inspections = await loadSupabaseInspections();
+          const remoteInspection = inspections.find((item) => item.id === inspectionId);
+          if (!active) return;
+          setInspection(remoteInspection);
+          if (!remoteInspection) {
+            setLoadError(`Inspection ${inspectionId} was not found in Supabase. Import inspections.csv or add this inspection first.`);
+            return;
+          }
+          if (remoteInspection.status === "Scheduled") {
+            await markSupabaseInspectionInProgress(remoteInspection);
+            if (!active) return;
+            remoteInspection.status = "In Progress";
+            setInspection({ ...remoteInspection });
+          }
+          const data = await loadSupabaseInspectionExecution(remoteInspection);
+          if (!active) return;
+          setAnswers(data.answers);
+          setFindings(data.findings);
+          setCompletedRecord(data.completedRecord);
+          setTransferredCount(data.findings.length);
+        }
+      } catch (error) {
+        if (active) setLoadError(error instanceof Error ? error.message : "Could not load inspection data.");
+      } finally {
+        if (active) setCompletionLoadedFor(inspectionId);
       }
-      setCompletionLoadedFor(inspectionId);
-    });
+    };
+    void load();
     return () => {
       active = false;
     };
@@ -124,20 +167,27 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     [],
   );
 
+  if (completionLoadedFor !== inspectionId) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspection status…</div>;
+  }
+
+  if (loadError && !isDemoMode()) {
+    return <div role="alert" className="max-w-2xl rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-800">
+      Could not load inspection from Supabase: {loadError}
+      <Link href="/inspections" className="mt-4 inline-flex rounded-lg bg-sky-600 px-4 py-2 font-semibold text-white hover:bg-sky-700">Back to Inspections</Link>
+    </div>;
+  }
+
   if (!inspection) {
     return (
       <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-slate-900">Inspection not found</h1>
-        <p className="mt-2 text-sm text-slate-600">No mock inspection matches ID {inspectionId}.</p>
+        <p className="mt-2 text-sm text-slate-600">{loadError || `No inspection matches ID ${inspectionId}.`}</p>
         <Link href="/inspections" className="mt-5 inline-flex rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700">
           Back to Inspections
         </Link>
       </div>
     );
-  }
-
-  if (completionLoadedFor !== inspectionId) {
-    return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspection status…</div>;
   }
 
   if (completedRecord) {
@@ -197,7 +247,8 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     setFindingFormFor(checklistItemId);
   };
 
-  const saveFinding = (checklistItemId: string, checklistItemTitle: string, draft: FindingDraft) => {
+  const saveFinding = async (checklistItemId: string, checklistItemTitle: string, draft: FindingDraft) => {
+    if (findingSaving) return;
     const description = draft.description.trim();
 
     if (!description || !draft.category || !draft.severity) {
@@ -206,8 +257,20 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     }
 
     const existingFinding = getFinding(checklistItemId);
+    setFindingSaving(true);
+    let findingId = existingFinding?.id ?? `F-${String(findings.length + 1).padStart(3, "0")}`;
+    try {
+      if (!isDemoMode()) {
+        const saved = await saveFindingToSupabase(draft, inspection, checklistItemId, existingFinding?.id);
+        findingId = saved.id;
+      }
+    } catch (error) {
+      setFindingFormError(`Unable to save Finding: ${getSaveErrorMessage(error)}`);
+      setFindingSaving(false);
+      return;
+    }
     const finding: LocalFinding = {
-      id: existingFinding?.id ?? `F-${String(findings.length + 1).padStart(3, "0")}`,
+      id: findingId,
       inspectionId: inspection.id,
       checklistItemId,
       checklistItemTitle,
@@ -232,6 +295,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     setFindingFormFor(null);
     setFindingFormError("");
     setFindingDraft(createEmptyFindingDraft());
+    setFindingSaving(false);
   };
 
   const confirmCompletion = () => {
@@ -286,12 +350,29 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     };
 
     try {
-      const result = completeInspectionAndTransfer(record);
-      preservePreviewUrlsOnUnmountRef.current = completedFindings.some(
-        (finding) => finding.evidence.some((item) => item.previewUrl),
-      );
-      setCompletedRecord(result.completedRecord);
-      setTransferredCount(result.transferredCount);
+      if (isDemoMode()) {
+        const result = completeInspectionAndTransfer(record);
+        preservePreviewUrlsOnUnmountRef.current = completedFindings.some(
+          (finding) => finding.evidence.some((item) => item.previewUrl),
+        );
+        setCompletedRecord(result.completedRecord);
+        setTransferredCount(result.transferredCount);
+      } else {
+        void completeSupabaseInspection(inspection, answers).then(() => {
+          setInspection({ ...inspection, status: "Completed" });
+          setCompletedRecord(record);
+          setTransferredCount(completedFindings.length);
+          setConfirmationOpen(false);
+          setIsCompleting(false);
+          findingFormForRef.current = null;
+          setFindingFormFor(null);
+          setSaveNotice(false);
+        }).catch((error) => {
+          setCompletionError(error instanceof Error ? error.message : "Unable to save the inspection to Supabase.");
+          setIsCompleting(false);
+        });
+        return;
+      }
       setConfirmationOpen(false);
       setIsCompleting(false);
       findingFormForRef.current = null;
@@ -335,6 +416,20 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
     );
   };
 
+  const saveProgress = async () => {
+    if (progressSaving) return;
+    setProgressSaving(true);
+    setProgressError("");
+    try {
+      if (!isDemoMode()) await saveSupabaseChecklistAnswers(inspection, answers);
+      setSaveNotice(true);
+    } catch (error) {
+      setProgressError(error instanceof Error ? error.message : "Unable to save inspection progress.");
+    } finally {
+      setProgressSaving(false);
+    }
+  };
+
   const addEvidence = (event: ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.currentTarget.files ?? []);
     const { attachments, rejectedCount } = createFindingEvidence(
@@ -346,7 +441,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       setFindingDraft((current) => ({ ...current, evidence: [...current.evidence, ...attachments] }));
     }
     setEvidenceError(
-      rejectedCount ? "Only JPG, PNG, and WebP images can be attached." : "",
+      rejectedCount ? "Use JPG, PNG, or WebP images up to 10 MB each." : "",
     );
     event.currentTarget.value = "";
   };
@@ -495,6 +590,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
                     draft={findingDraft}
                     onDraftChange={updateFindingDraft}
                     onSave={(draft) => saveFinding(item.id, item.label, draft)}
+                    isSaving={findingSaving}
                     onCancel={() => {
                       findingFormForRef.current = null;
                       setFindingFormFor(null);
@@ -536,18 +632,18 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
       <section aria-label="Inspection actions" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         {saveNotice ? (
           <p role="status" className="mb-4 text-sm font-medium text-emerald-700">
-            Inspection progress saved locally for this session.
+            {isDemoMode() ? "Inspection progress saved locally for this session." : "Inspection progress saved to Supabase."}
           </p>
         ) : null}
+        {progressError ? <p role="alert" className="mb-4 text-sm font-medium text-red-700">{progressError}</p> : null}
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button
             type="button"
-            onClick={() => {
-              setSaveNotice(true);
-            }}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            disabled={progressSaving || isCompleting}
+            onClick={saveProgress}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
           >
-            Save &amp; Continue
+            {progressSaving ? "Saving…" : "Save & Continue"}
           </button>
           <button
             type="button"

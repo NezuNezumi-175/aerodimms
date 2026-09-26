@@ -33,8 +33,8 @@ type SupabaseFinding = {
   severity: Finding["severity"];
   status: Finding["status"];
   location_name: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   asset_id: string | null;
   airport_stand_code: string | null;
   assigned_to_employee_id: string | null;
@@ -43,6 +43,11 @@ type SupabaseFinding = {
   created_by_employee_id: string | null;
   created_at: string;
   updated_at: string;
+  category: string | null;
+  inspector_remarks: string;
+  gps_captured_at: string | null;
+  source_inspection_id: string | null;
+  checklist_item_id: string | null;
 };
 
 type SupabaseWorkOrder = {
@@ -87,7 +92,7 @@ function mapAsset(row: SupabaseAsset): Asset {
 }
 
 function mapFinding(row: SupabaseFinding): Finding {
-  return { id: row.id, findingCode: row.finding_code, source: row.source, title: row.title, description: row.description, severity: row.severity, status: row.status, locationName: row.location_name, latitude: row.latitude, longitude: row.longitude, assetId: optional(row.asset_id), airportStandCode: optional(row.airport_stand_code), assignedTo: optional(row.assigned_to_employee_id), assignedTeam: optional(row.assigned_team), targetCompletionDate: optional(row.target_completion_date), createdBy: optional(row.created_by_employee_id), createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, findingCode: row.finding_code, source: row.source, title: row.title, description: row.description, severity: row.severity, status: row.status, locationName: row.location_name, latitude: row.latitude, longitude: row.longitude, assetId: optional(row.asset_id), airportStandCode: optional(row.airport_stand_code), assignedTo: optional(row.assigned_to_employee_id), assignedTeam: optional(row.assigned_team), targetCompletionDate: optional(row.target_completion_date), createdBy: optional(row.created_by_employee_id), createdAt: row.created_at, updatedAt: row.updated_at, category: optional(row.category), inspectorRemarks: row.inspector_remarks, gpsCapturedAt: optional(row.gps_captured_at), sourceInspectionId: optional(row.source_inspection_id), checklistItemId: optional(row.checklist_item_id) };
 }
 
 function mapWorkOrder(row: SupabaseWorkOrder): WorkOrder {

@@ -41,8 +41,8 @@ export interface Finding {
   severity: Severity;
   status: FindingStatus;
   locationName: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   assetId?: string;
   airportStandCode?: string;
   assignedTo?: string;
@@ -51,6 +51,11 @@ export interface Finding {
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
+  category?: string;
+  inspectorRemarks?: string;
+  gpsCapturedAt?: string;
+  sourceInspectionId?: string;
+  checklistItemId?: string;
 }
 
 export interface WorkOrder {
@@ -72,6 +77,7 @@ export interface EvidenceItem {
   findingId: string;
   fileName: string;
   storagePath: string;
+  previewUrl?: string;
   mimeType: string;
   uploadedBy: string;
   createdAt: string;

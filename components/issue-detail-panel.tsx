@@ -18,6 +18,7 @@ type IssueEvidenceDisplay = {
   mimeType: string;
   fileSize?: number;
   previewUrl?: string;
+  storagePath?: string;
 };
 
 export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
@@ -25,11 +26,28 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const [signedEvidenceUrls, setSignedEvidenceUrls] = useState<Record<string, string>>({});
   const currentUser = getStoredUser();
 
   useEffect(() => {
     loadAppState().then(setState).catch(() => setState(null));
   }, []);
+
+  useEffect(() => {
+    if (isDemoMode() || !state || !findingCode) return;
+    let cancelled = false;
+    const rows = state.evidence.filter((item) => {
+      const target = state.findings.find((finding) => finding.findingCode === findingCode || finding.id === findingCode);
+      return target?.id === item.findingId;
+    });
+    Promise.all(rows.map(async (item) => {
+      const { data, error } = await createClient().storage.from("finding-evidence").createSignedUrl(item.storagePath, 3600);
+      return error ? null : [item.id, data.signedUrl] as const;
+    })).then((results) => {
+      if (!cancelled) setSignedEvidenceUrls(Object.fromEntries(results.filter((item): item is readonly [string, string] => item !== null)));
+    });
+    return () => { cancelled = true; };
+  }, [findingCode, state]);
 
   const finding = useMemo(() => {
     if (!state) return null;
@@ -57,8 +75,11 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
         previewUrl: item.previewUrl,
       }));
     }
-    return state.evidence.filter((item) => item.findingId === finding.id);
-  }, [finding, state]);
+    return state.evidence.filter((item) => item.findingId === finding.id).map((item) => ({
+      ...item,
+      previewUrl: signedEvidenceUrls[item.id],
+    }));
+  }, [finding, signedEvidenceUrls, state]);
 
   const history = useMemo(() => {
     if (!state || !finding) return [];
@@ -70,7 +91,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   const demoMode = isDemoMode();
 
   const updateFindingStatus = async (nextStatus: string, action: string, remarks?: string) => {
-    if (!state || !finding || isSaving) return;
+    if (!state || !finding || isSaving || "sourceFindingId" in finding) return;
     setIsSaving(true);
     setSaveError("");
     setSaveMessage("");
@@ -189,7 +210,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   })();
   const coordinates = internalFinding?.gps
     ? `${internalFinding.gps.latitude.toFixed(5)}, ${internalFinding.gps.longitude.toFixed(5)}`
-    : finding.latitude !== undefined && finding.longitude !== undefined
+    : finding.latitude !== null && finding.latitude !== undefined && finding.longitude !== null && finding.longitude !== undefined
       ? `${finding.latitude.toFixed(5)}, ${finding.longitude.toFixed(5)}`
       : "Not captured";
 
@@ -219,7 +240,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
             <p><span className="font-semibold text-slate-800">Current Status:</span> {finding.status}</p>
             <p><span className="font-semibold text-slate-800">Assigned Team:</span> {finding.assignedTeam ?? "Unassigned"}</p>
             <p><span className="font-semibold text-slate-800">GPS Location:</span> {coordinates}</p>
-            {internalFinding?.gps ? <p><span className="font-semibold text-slate-800">GPS Captured:</span> {new Date(internalFinding.gps.capturedAt).toLocaleString()}</p> : null}
+            {internalFinding?.gps ? <p><span className="font-semibold text-slate-800">GPS Captured:</span> {new Date(internalFinding.gps.capturedAt).toLocaleString()}</p> : "gpsCapturedAt" in finding && finding.gpsCapturedAt ? <p><span className="font-semibold text-slate-800">GPS Captured:</span> {new Date(finding.gpsCapturedAt).toLocaleString()}</p> : null}
             <p><span className="font-semibold text-slate-800">Target Completion:</span> {finding.targetCompletionDate ?? "Not set"}</p>
           </div>
         </div>

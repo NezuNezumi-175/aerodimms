@@ -1,6 +1,7 @@
 import type { EvidenceAttachment, GpsLocation } from "@/lib/inspection-data";
 
 const acceptedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const maxFindingImageSize = 10 * 1024 * 1024;
 
 function getImageType(file: File): string | null {
   if (acceptedImageTypes.has(file.type)) return file.type;
@@ -21,7 +22,7 @@ export function createFindingEvidence(
 
   files.forEach((file) => {
     const fileType = getImageType(file);
-    if (!fileType) {
+    if (!fileType || file.size > maxFindingImageSize) {
       rejectedCount += 1;
       return;
     }

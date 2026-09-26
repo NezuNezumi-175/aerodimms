@@ -28,9 +28,12 @@ create table if not exists public.work_orders (
 create table if not exists public.evidence (
   id text primary key, finding_id text not null references public.findings(id) on delete cascade,
   file_name text not null, storage_path text not null, mime_type text not null,
+  file_size bigint,
   uploaded_by_employee_id text references public.profiles(employee_id) on update cascade on delete set null,
   created_at timestamptz not null
 );
+-- Keep reruns on existing databases compatible with the current upload metadata.
+alter table public.evidence add column if not exists file_size bigint;
 create table if not exists public.issue_history (
   id text primary key, finding_id text not null references public.findings(id) on delete cascade,
   user_employee_id text references public.profiles(employee_id) on update cascade on delete set null,
@@ -51,6 +54,13 @@ begin
     execute format('grant select on public.%I to authenticated', t);
   end loop;
 end $$;
+
+-- Allow signed-in users to create findings. Inspection-specific columns and
+-- nullable GPS are added by inspection-schema.sql.
+drop policy if exists "Authenticated users can create findings" on public.findings;
+create policy "Authenticated users can create findings"
+on public.findings for insert to authenticated with check (true);
+grant insert on public.findings to authenticated;
 
 -- Allow authenticated users to change a finding's status and record the change
 -- atomically through the update_finding_status RPC.
@@ -129,3 +139,5 @@ $$;
 
 revoke all on function public.update_finding_status(text, text, text, text) from public, anon;
 grant execute on function public.update_finding_status(text, text, text, text) to authenticated;
+
+notify pgrst, 'reload schema';
