@@ -1,4 +1,4 @@
-import type { CompletedInspectionRecord, InternalInspectionFinding } from "@/lib/inspection-data";
+import type { CompletedInspectionRecord, Inspection, InternalInspectionFinding } from "@/lib/inspection-data";
 
 export type Role = "INSPECTOR" | "MAINTENANCE_ENGINEER" | "OPERATIONS_MANAGER";
 export type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
@@ -102,6 +102,7 @@ export interface DemoState {
   issueHistory: IssueHistoryEntry[];
   completedInspectionRecords?: CompletedInspectionRecord[];
   internalInspectionFindings?: InternalInspectionFinding[];
+  adHocInspections?: Inspection[];
 }
 
 export const STORAGE_KEY = "aerodimms-demo-state";
@@ -168,6 +169,7 @@ export const defaultState: DemoState = {
   issueHistory,
   completedInspectionRecords: [],
   internalInspectionFindings: [],
+  adHocInspections: [],
 };
 
 export const openFindingStatuses = new Set<FindingStatus>([
@@ -216,6 +218,7 @@ export function loadDemoState(): DemoState {
       ...storedState,
       completedInspectionRecords: storedState.completedInspectionRecords ?? [],
       internalInspectionFindings: storedState.internalInspectionFindings ?? [],
+      adHocInspections: storedState.adHocInspections ?? [],
       findings: storedState.findings.map((finding) => {
         const demoFinding = defaultState.findings.find(
           (item) => item.id === finding.id && (item.airportStandCode || item.id === "f-103"),
