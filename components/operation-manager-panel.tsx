@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { assignFindingTeam } from "@/lib/supabase/team-assignment";
+import { assignFindingTeam, deleteFinding } from "@/lib/supabase/team-assignment";
 import { isDemoMode, loadAppState } from "@/lib/app-data";
 import { getStoredUser, loadDemoState, saveDemoState, type DemoState, type Finding } from "@/lib/demo-data";
 import { useNetworkStatus } from "@/lib/use-network-status";
@@ -22,6 +22,7 @@ export function OperationManagerPanel() {
   const [state, setState] = useState<DemoState | null>(null);
   const [draftTeams, setDraftTeams] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -73,6 +74,44 @@ export function OperationManagerPanel() {
     }
   }
 
+  async function removeFinding(finding: Finding) {
+    if (!state || !window.confirm(`Delete ${finding.findingCode} (${finding.title})? This cannot be undone.`)) return;
+    setDeletingId(finding.id);
+    setError("");
+    setNotice("");
+    try {
+      if (isDemoMode()) {
+        const demoState = loadDemoState();
+        const nextState: DemoState = {
+          ...demoState,
+          findings: demoState.findings.filter((item) => item.id !== finding.id),
+          workOrders: demoState.workOrders.filter((item) => item.findingId !== finding.id),
+          evidence: demoState.evidence.filter((item) => item.findingId !== finding.id),
+          issueHistory: demoState.issueHistory.filter((item) => item.findingId !== finding.id),
+          internalInspectionFindings: demoState.internalInspectionFindings?.filter((item) => item.id !== finding.id),
+        };
+        saveDemoState(nextState);
+        setState(nextState);
+      } else {
+        if (!isOnline) throw new Error("Connect to the internet before deleting an issue.");
+        const cleanupWarning = await deleteFinding(finding.id);
+        setState((current) => current ? {
+          ...current,
+          findings: current.findings.filter((item) => item.id !== finding.id),
+          workOrders: current.workOrders.filter((item) => item.findingId !== finding.id),
+          evidence: current.evidence.filter((item) => item.findingId !== finding.id),
+          issueHistory: current.issueHistory.filter((item) => item.findingId !== finding.id),
+        } : current);
+        if (cleanupWarning) setError(cleanupWarning);
+      }
+      setNotice(`${finding.findingCode} deleted.`);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Could not delete the issue.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   const user = getStoredUser();
   if (user && user.role !== "OPERATIONS_MANAGER") return <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">Only Operation Managers can assign teams.</div>;
 
@@ -101,7 +140,7 @@ export function OperationManagerPanel() {
         {!state ? <p className="p-6 text-sm text-slate-500">Loading issues…</p> : issues.length === 0 ? <p className="p-6 text-sm text-slate-500">No issues found.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Issue</th><th className="px-5 py-3">Severity</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Location</th><th className="px-5 py-3">Responsible team</th><th className="px-5 py-3">Action</th></tr></thead>
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Issue</th><th className="px-5 py-3">Severity</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Location</th><th className="px-5 py-3">Responsible team</th><th className="px-5 py-3">Actions</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {issues.map((finding) => {
                   const draft = draftTeams[finding.id] ?? finding.assignedTeam ?? "";
@@ -112,7 +151,7 @@ export function OperationManagerPanel() {
                     <td className="px-5 py-4 text-slate-700">{finding.status.replaceAll("_", " ")}</td>
                     <td className="px-5 py-4 text-slate-700">{finding.locationName}</td>
                     <td className="px-5 py-4"><input list={`teams-${finding.id}`} value={draft} onChange={(event) => setDraftTeams((current) => ({ ...current, [finding.id]: event.target.value }))} placeholder="Select or enter a team" className="w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100" /><datalist id={`teams-${finding.id}`}>{teams.map((team) => <option key={team} value={team} />)}</datalist></td>
-                    <td className="px-5 py-4"><button type="button" onClick={() => void saveTeam(finding)} disabled={!changed || savingId === finding.id || (!isDemoMode() && !isOnline)} className="rounded-lg bg-sky-700 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-slate-300">{savingId === finding.id ? "Saving…" : "Save"}</button></td>
+                    <td className="px-5 py-4"><div className="flex items-center gap-2"><button type="button" onClick={() => void saveTeam(finding)} disabled={!changed || savingId === finding.id || deletingId === finding.id || (!isDemoMode() && !isOnline)} className="rounded-lg bg-sky-700 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-slate-300">{savingId === finding.id ? "Saving…" : "Save"}</button><button type="button" onClick={() => void removeFinding(finding)} disabled={deletingId === finding.id || savingId === finding.id || (!isDemoMode() && !isOnline)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">{deletingId === finding.id ? "Deleting…" : "Delete"}</button></div></td>
                   </tr>;
                 })}
               </tbody>

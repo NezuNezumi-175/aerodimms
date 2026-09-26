@@ -237,4 +237,40 @@ $$;
 revoke all on function public.assign_finding_team(text, text) from public, anon;
 grant execute on function public.assign_finding_team(text, text) to authenticated;
 
+-- Permit Operation Managers to clean up stored evidence when deleting an issue.
+drop policy if exists "Operation Managers can delete finding evidence" on storage.objects;
+create policy "Operation Managers can delete finding evidence"
+  on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'finding-evidence'
+    and exists (
+      select 1 from public.profiles
+      where id = (select auth.uid()) and role = 'OPERATIONS_MANAGER'
+    )
+  );
+
+create or replace function public.delete_finding(p_finding_id text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1 from public.profiles
+    where id = (select auth.uid()) and role = 'OPERATIONS_MANAGER'
+  ) then
+    raise exception 'An Operation Manager profile is required';
+  end if;
+
+  delete from public.findings where id = p_finding_id;
+  if not found then
+    raise exception 'Finding not found';
+  end if;
+end;
+$$;
+
+revoke all on function public.delete_finding(text) from public, anon;
+grant execute on function public.delete_finding(text) to authenticated;
+
 notify pgrst, 'reload schema';
