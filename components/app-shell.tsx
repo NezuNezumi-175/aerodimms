@@ -44,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between px-5 py-5">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-slate-400">AeroDIMMS</p>
-              <h1 className="mt-1 text-xl font-semibold">Penang</h1>
+              <h1 className="mt-1 text-xl font-semibold">Fukuoka Airport</h1>
             </div>
             <div className="flex items-center gap-2 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
               <span className="h-2 w-2 rounded-full bg-emerald-400" />

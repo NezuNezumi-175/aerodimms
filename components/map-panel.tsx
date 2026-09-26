@@ -311,16 +311,13 @@ export function MapPanel() {
       </div>
 
       <div className="space-y-4">
-        <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div ref={mapContainer} className="h-[min(72vh,820px)] min-h-[560px] w-full" />
-        </div>
-
-        {selectedFinding || selectedAsset || selectedStand ? <div className="space-y-4">
           {selectedStand ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="border-t border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:absolute lg:right-4 lg:top-20 lg:max-h-[calc(100%-6rem)] lg:w-80 lg:overflow-y-auto lg:rounded-xl lg:border lg:bg-white/95 lg:p-4 lg:shadow-lg lg:backdrop-blur-sm">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Parking Bay / Stand</p>
-              <h3 className="mt-3 text-2xl font-bold text-slate-900">{selectedStand.code}</h3>
-              <div className="mt-4 space-y-2 text-sm text-slate-600">
+              <h3 className="mt-2 text-xl font-bold text-slate-900">{selectedStand.code}</h3>
+              <div className="mt-3 space-y-1.5 text-sm text-slate-600">
                 <p><span className="font-semibold text-slate-800">Apron:</span> {selectedStand.apron ?? "Not specified"}</p>
                 <p><span className="font-semibold text-slate-800">Latitude:</span> {selectedStand.latitude.toFixed(6)}</p>
                 <p><span className="font-semibold text-slate-800">Longitude:</span> {selectedStand.longitude.toFixed(6)}</p>
@@ -329,14 +326,13 @@ export function MapPanel() {
               </div>
             </div>
           ) : null}
-
           {selectedFinding ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="border-t border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:absolute lg:right-4 lg:top-20 lg:max-h-[calc(100%-6rem)] lg:w-80 lg:overflow-y-auto lg:rounded-xl lg:border lg:bg-white/95 lg:p-4 lg:shadow-lg lg:backdrop-blur-sm">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Finding</p>
-              <h3 className="mt-3 text-2xl font-bold text-slate-900">{selectedFinding.findingCode}</h3>
-              <p className="mt-2 text-lg font-semibold text-slate-700">{selectedFinding.title}</p>
-              <p className="mt-2 text-sm text-slate-600">{selectedFinding.description}</p>
-              <div className="mt-4 space-y-2 text-sm text-slate-600">
+              <h3 className="mt-2 text-xl font-bold text-slate-900">{selectedFinding.findingCode}</h3>
+              <p className="mt-2 text-base font-semibold text-slate-700">{selectedFinding.title}</p>
+              <p className="mt-1 text-sm text-slate-600">{selectedFinding.description}</p>
+              <div className="mt-3 space-y-1.5 text-sm text-slate-600">
                 <p><span className="font-semibold text-slate-800">Location:</span> {selectedFinding.locationName}</p>
                 <p><span className="font-semibold text-slate-800">Latitude:</span> {selectedFinding.latitude.toFixed(6)}</p>
                 <p><span className="font-semibold text-slate-800">Longitude:</span> {selectedFinding.longitude.toFixed(6)}</p>
@@ -348,13 +344,15 @@ export function MapPanel() {
               </div>
               <Link
                 href={`/issues/${selectedFinding.findingCode}`}
-                className="mt-5 inline-flex rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700"
+                className="mt-4 inline-flex rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700"
               >
                 View Issue
               </Link>
             </div>
           ) : null}
+        </div>
 
+        {selectedFinding || selectedAsset ? <div className="space-y-4">
           {selectedAsset ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Asset</p>

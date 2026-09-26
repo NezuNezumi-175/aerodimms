@@ -48,7 +48,7 @@ export function LoginPanel() {
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
         <div className="mb-8">
           <p className="text-xs uppercase tracking-[0.25em] text-sky-600">AeroDIMMS</p>
-          <h1 className="mt-3 text-3xl font-bold text-slate-900">Penang Airport</h1>
+          <h1 className="mt-3 text-3xl font-bold text-slate-900">Fukuoka Airport</h1>
           <p className="mt-2 text-sm text-slate-600">Operations dashboard and issue tracker</p>
         </div>
 

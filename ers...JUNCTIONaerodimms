@@ -1,0 +1,267 @@
+[1mdiff --git a/components/map-panel.tsx b/components/map-panel.tsx[m
+[1mindex 7c3feef..b39bb5e 100644[m
+[1m--- a/components/map-panel.tsx[m
+[1m+++ b/components/map-panel.tsx[m
+[36m@@ -14,9 +14,16 @@[m [mimport {[m
+   type Asset,[m
+   type DemoState,[m
+   type Finding,[m
+[31m-  type Severity,[m
+ } from "@/lib/demo-data";[m
+ [m
+[32m+[m[32mtype AirportStand = {[m
+[32m+[m[32m  code: string;[m
+[32m+[m[32m  apron?: string;[m
+[32m+[m[32m  latitude: number;[m
+[32m+[m[32m  longitude: number;[m
+[32m+[m[32m  openFindings: Finding[];[m
+[32m+[m[32m};[m
+[32m+[m
+ export function MapPanel() {[m
+   const mapContainer = useRef<HTMLDivElement | null>(null);[m
+   const mapRef = useRef<maplibregl.Map | null>(null);[m
+[36m@@ -28,6 +35,7 @@[m [mexport function MapPanel() {[m
+   const [showAirport, setShowAirport] = useState(true);[m
+   const [airportData, setAirportData] = useState<FeatureCollection<Point, { name?: string; type?: string; apron?: string }> | null>(null);[m
+   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);[m
+[32m+[m[32m  const [selectedStand, setSelectedStand] = useState<AirportStand | null>(null);[m
+   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);[m
+ [m
+   useEffect(() => {[m
+[36m@@ -62,15 +70,17 @@[m [mexport function MapPanel() {[m
+             type: "raster",[m
+             tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],[m
+             tileSize: 256,[m
+[32m+[m[32m            maxzoom: 18,[m
+             attribution: "Tiles © Esri — Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community",[m
+           },[m
+         },[m
+         layers: [[m
+[31m-          { id: "esri-imagery", type: "raster", source: "esri-imagery", minzoom: 0, maxzoom: 19 },[m
+[32m+[m[32m          { id: "esri-imagery", type: "raster", source: "esri-imagery", minzoom: 0, maxzoom: 18 },[m
+         ],[m
+       },[m
+       center: [130.4445, 33.6011],[m
+       zoom: 15,[m
+[32m+[m[32m      maxZoom: 18,[m
+       pitch: 20,[m
+     });[m
+ [m
+[36m@@ -93,7 +103,7 @@[m [mexport function MapPanel() {[m
+ [m
+   useEffect(() => {[m
+     const map = mapRef.current;[m
+[31m-    if (!map || !airportData || !showAirport) return;[m
+[32m+[m[32m    if (!map || !airportData || !state || !showAirport) return;[m
+ [m
+     const markers = airportData.features.map((feature) => {[m
+       const element = document.createElement("div");[m
+[36m@@ -101,13 +111,23 @@[m [mexport function MapPanel() {[m
+       element.textContent = feature.properties.name ?? "Spot";[m
+       element.title = `${feature.properties.name ?? "Spot"} · ${feature.properties.apron ?? "Fukuoka Airport"}`;[m
+       const [longitude, latitude] = feature.geometry.coordinates;[m
+[32m+[m[32m      const code = feature.properties.name ?? "Spot";[m
+[32m+[m[32m      const openFindings = state.findings.filter([m
+[32m+[m[32m        (finding) => finding.airportStandCode === code && openFindingStatuses.has(finding.status),[m
+[32m+[m[32m      );[m
+[32m+[m[32m      element.addEventListener("click", () => {[m
+[32m+[m[32m        setSelectedAsset(null);[m
+[32m+[m[32m        setSelectedFinding(null);[m
+[32m+[m[32m        setSelectedStand({ code, apron: feature.properties.apron, latitude, longitude, openFindings });[m
+[32m+[m[32m        map.flyTo({ center: [longitude, latitude], zoom: 15 });[m
+[32m+[m[32m      });[m
+       return new maplibregl.Marker({ element, anchor: "bottom" })[m
+         .setLngLat([longitude, latitude])[m
+         .addTo(map);[m
+     });[m
+ [m
+     return () => markers.forEach((marker) => marker.remove());[m
+[31m-  }, [airportData, showAirport]);[m
+[32m+[m[32m  }, [airportData, showAirport, state]);[m
+ [m
+   useEffect(() => {[m
+     if (!mapRef.current || !state) return;[m
+[36m@@ -115,16 +135,20 @@[m [mexport function MapPanel() {[m
+     const map = mapRef.current;[m
+     const markers: maplibregl.Marker[] = [];[m
+ [m
+[31m-    const markerContainer = (color: string, label: string, onClick?: () => void) => {[m
+[32m+[m[32m    const markerContainer = (color: string, label: string, onClick?: () => void, markerText = "") => {[m
+       const button = document.createElement("button");[m
+       button.type = "button";[m
+[31m-      button.style.width = "16px";[m
+[31m-      button.style.height = "16px";[m
+[32m+[m[32m      button.textContent = markerText;[m
+[32m+[m[32m      button.style.width = "18px";[m
+[32m+[m[32m      button.style.height = "18px";[m
+       button.style.borderRadius = "9999px";[m
+       button.style.border = "2px solid #fff";[m
+       button.style.background = color;[m
+       button.style.boxShadow = "0 6px 18px rgba(15, 23, 42, 0.3)";[m
+       button.style.cursor = "pointer";[m
+[32m+[m[32m      button.style.display = "flex";[m
+[32m+[m[32m      button.style.alignItems = "center";[m
+[32m+[m[32m      button.style.justifyContent = "center";[m
+       button.title = label;[m
+       if (onClick) button.addEventListener("click", onClick);[m
+       return button;[m
+[36m@@ -139,6 +163,7 @@[m [mexport function MapPanel() {[m
+           .addTo(map);[m
+ [m
+         marker.getElement().addEventListener("click", () => {[m
+[32m+[m[32m          setSelectedStand(null);[m
+           setSelectedFinding(null);[m
+           setSelectedAsset(asset);[m
+           map.flyTo({ center: [asset.longitude, asset.latitude], zoom: 15 });[m
+[36m@@ -151,14 +176,28 @@[m [mexport function MapPanel() {[m
+       state.findings[m
+         .filter((finding) => openFindingStatuses.has(finding.status))[m
+         .forEach((finding) => {[m
+[31m-          const severityColor = severityColors[finding.severity as Severity] || "#4b5563";[m
+[32m+[m[32m          const severityColor = finding.severity === "CRITICAL" ? severityColors.CRITICAL : "#2563eb";[m
+           const marker = new maplibregl.Marker({[m
+[31m-            element: markerContainer(severityColor, `Finding: ${finding.findingCode}`),[m
+[32m+[m[32m            element: markerContainer(severityColor, `Finding: ${finding.findingCode}`, undefined, "!"),[m
+           })[m
+[31m-            .setLngLat([finding.longitude, finding.latitude])[m
+[32m+[m[32m            .setLngLat([[m
+[32m+[m[32m              finding.longitude,[m
+[32m+[m[32m              finding.latitude + (finding.airportStandCode ? 0.00008 : 0),[m
+[32m+[m[32m            ])[m
+             .addTo(map);[m
+ [m
+[32m+[m[32m          marker.getElement().style.width = "24px";[m
+[32m+[m[32m          marker.getElement().style.height = "24px";[m
+[32m+[m[32m          marker.getElement().style.border = "3px solid #fff";[m
+[32m+[m[32m          marker.getElement().style.color = "#fff";[m
+[32m+[m[32m          marker.getElement().style.fontSize = "14px";[m
+[32m+[m[32m          marker.getElement().style.fontWeight = "800";[m
+[32m+[m[32m          marker.getElement().style.lineHeight = "1";[m
+[32m+[m[32m          marker.getElement().style.zIndex = "2";[m
+[32m+[m[32m          marker.getElement().style.boxShadow = "0 3px 10px rgba(15, 23, 42, 0.45)";[m
+[32m+[m
+           marker.getElement().addEventListener("click", () => {[m
+[32m+[m[32m            setSelectedStand(null);[m
+             setSelectedAsset(null);[m
+             setSelectedFinding(finding);[m
+             map.flyTo({ center: [finding.longitude, finding.latitude], zoom: 15 });[m
+[36m@@ -210,6 +249,7 @@[m [mexport function MapPanel() {[m
+     setErrorMessage("");[m
+     if (match.type === "asset") {[m
+       const asset = match.item as Asset;[m
+[32m+[m[32m      setSelectedStand(null);[m
+       setSelectedFinding(null);[m
+       setSelectedAsset(asset);[m
+       mapRef.current.flyTo({ center: [asset.longitude, asset.latitude], zoom: 15 });[m
+[36m@@ -217,6 +257,7 @@[m [mexport function MapPanel() {[m
+     }[m
+ [m
+     const finding = match.item as Finding;[m
+[32m+[m[32m    setSelectedStand(null);[m
+     setSelectedAsset(null);[m
+     setSelectedFinding(finding);[m
+     mapRef.current.flyTo({ center: [finding.longitude, finding.latitude], zoom: 15 });[m
+[36m@@ -274,16 +315,35 @@[m [mexport function MapPanel() {[m
+           <div ref={mapContainer} className="h-[min(72vh,820px)] min-h-[560px] w-full" />[m
+         </div>[m
+ [m
+[31m-        {selectedFinding || selectedAsset ? <div className="space-y-4">[m
+[32m+[m[32m        {selectedFinding || selectedAsset || selectedStand ? <div className="space-y-4">[m
+[32m+[m[32m          {selectedStand ? ([m
+[32m+[m[32m            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">[m
+[32m+[m[32m              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Parking Bay / Stand</p>[m
+[32m+[m[32m              <h3 className="mt-3 text-2xl font-bold text-slate-900">{selectedStand.code}</h3>[m
+[32m+[m[32m              <div className="mt-4 space-y-2 text-sm text-slate-600">[m
+[32m+[m[32m                <p><span className="font-semibold text-slate-800">Apron:</span> {selectedStand.apron ?? "Not specified"}</p>[m
+[32m+[m[32m                <p><span className="font-semibold text-slate-800">Latitude:</span> {selectedStand.latitude.toFixed(6)}</p>[m
+[32m+[m[32m                <p><span className="font-semibold text-slate-800">Longitude:</span> {selectedStand.longitude.toFixed(6)}</p>[m
+[32m+[m[32m                <p><span className="font-semibold text-slate-800">Status:</span> {selectedStand.openFindings.length ? "Problem" : "Normal"}</p>[m
+[32m+[m[32m                <p><span className="font-semibold text-slate-800">Open Findings:</span> {selectedStand.openFindings.length}</p>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          ) : null}[m
+[32m+[m
+           {selectedFinding ? ([m
+             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">[m
+               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Finding</p>[m
+               <h3 className="mt-3 text-2xl font-bold text-slate-900">{selectedFinding.findingCode}</h3>[m
+               <p className="mt-2 text-lg font-semibold text-slate-700">{selectedFinding.title}</p>[m
+[32m+[m[32m              <p className="mt-2 text-sm text-slate-600">{selectedFinding.description}</p>[m
+               <div className="mt-4 space-y-2 text-sm text-slate-600">[m
+[32m+[m[32m                <p><span className="font-semibold text-slate-800">Location:</span> {selectedFinding.locationName}</p>[m
+[32m+[m[32m                <p><span className="font-semibold text-slate-800">Latitude:</span> {selectedFinding.latitude.toFixed(6)}</p>[m
+[32m+[m[32m                <p><span className="font-semibold text-slate-800">Longitude:</span> {selectedFinding.longitude.toFixed(6)}</p>[m
+                 <p><span className="font-semibold text-slate-800">Severity:</span> {selectedFinding.severity}</p>[m
+                 <p><span className="font-semibold text-slate-800">Status:</span> {selectedFinding.status}</p>[m
+[31m-                <p><span className="font-semibold text-slate-800">Location:</span> {selectedFinding.locationName}</p>[m
+[32m+[m[32m                {selectedFinding.assignedTo ? <p><span className="font-semibold text-slate-800">Assigned Person:</span> {selectedFinding.assignedTo}</p> : null}[m
+[32m+[m[32m                {selectedFinding.assignedTeam ? <p><span className="font-semibold text-slate-800">Assigned Team:</span> {selectedFinding.assignedTeam}</p> : null}[m
+                 <p><span className="font-semibold text-slate-800">Created:</span> {new Date(selectedFinding.createdAt).toLocaleDateString()}</p>[m
+               </div>[m
+               <Link[m
+[36m@@ -308,7 +368,7 @@[m [mexport function MapPanel() {[m
+             </div>[m
+           ) : null}[m
+ [m
+[31m-          {!selectedFinding && !selectedAsset ? ([m
+[32m+[m[32m          {!selectedFinding && !selectedAsset && !selectedStand ? ([m
+             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500 shadow-sm">[m
+               Select a finding or asset marker to inspect operational details.[m
+             </div>[m
+[1mdiff --git a/lib/demo-data.ts b/lib/demo-data.ts[m
+[1mindex 35b551a..5f94dea 100644[m
+[1m--- a/lib/demo-data.ts[m
+[1m+++ b/lib/demo-data.ts[m
+[36m@@ -39,6 +39,7 @@[m [mexport interface Finding {[m
+   latitude: number;[m
+   longitude: number;[m
+   assetId?: string;[m
+[32m+[m[32m  airportStandCode?: string;[m
+   assignedTo?: string;[m
+   assignedTeam?: string;[m
+   targetCompletionDate?: string;[m
+[36m@@ -113,9 +114,9 @@[m [mexport const assets: Asset[] = [[m
+ ];[m
+ [m
+ export const findings: Finding[] = [[m
+[31m-  { id: "f-101", findingCode: "F-101", source: "INTERNAL_INSPECTION", title: "Runway Edge Light Defect", description: "Damaged runway edge light at threshold area requiring replacement.", severity: "CRITICAL", status: "IN_PROGRESS", locationName: "Runway 04", latitude: 5.29853, longitude: 100.27446, assetId: "asset-1", assignedTo: "u-1", assignedTeam: "AGL Maintenance", targetCompletionDate: "2026-09-27", createdBy: "u-2", createdAt: "2026-09-15T08:42:00Z", updatedAt: "2026-09-25T15:15:00Z" },[m
+[31m-  { id: "f-102", findingCode: "F-102", source: "INTERNAL_INSPECTION", title: "Taxiway Surface Defect", description: "Surface spalling near Taxiway A causing operational concern.", severity: "HIGH", status: "ASSIGNED", locationName: "Taxiway A", latitude: 5.29934, longitude: 100.27673, assetId: "asset-6", assignedTo: "u-1", assignedTeam: "Pavement Team", targetCompletionDate: "2026-09-29", createdBy: "u-2", createdAt: "2026-09-14T09:05:00Z", updatedAt: "2026-09-25T13:50:00Z" },[m
+[31m-  { id: "f-103", findingCode: "F-103", source: "REGULATORY", title: "Wildlife Hazard", description: "Wildlife activity near apron edge needs monitoring and deterrence.", severity: "HIGH", status: "PENDING_VERIFICATION", locationName: "Apron", latitude: 5.30093, longitude: 100.2801, assignedTeam: "Operations", createdBy: "u-3", createdAt: "2026-09-18T10:15:00Z", updatedAt: "2026-09-25T10:37:00Z" },[m
+[32m+[m[32m  { id: "f-101", findingCode: "F-101", source: "INTERNAL_INSPECTION", title: "Parking Bay Guidance Light Defect", description: "Critical guidance light failure at Parking Bay 1L requires immediate replacement.", severity: "CRITICAL", status: "IN_PROGRESS", locationName: "Parking Bay 1L", latitude: 33.60118, longitude: 130.44456, assetId: "asset-1", airportStandCode: "1L", assignedTo: "u-1", assignedTeam: "AGL Maintenance", targetCompletionDate: "2026-09-27", createdBy: "u-2", createdAt: "2026-09-15T08:42:00Z", updatedAt: "2026-09-25T15:15:00Z" },[m
+[32m+[m[32m  { id: "f-102", findingCode: "F-102", source: "INTERNAL_INSPECTION", title: "Parking Bay Surface Marking Faded", description: "Faded surface marking at Parking Bay 2 needs repainting during the next maintenance window.", severity: "HIGH", status: "ASSIGNED", locationName: "Parking Bay 2", latitude: 33.60058, longitude: 130.44513, assetId: "asset-6", airportStandCode: "2", assignedTo: "u-1", assignedTeam: "Pavement Team", targetCompletionDate: "2026-09-29", createdBy: "u-2", createdAt: "2026-09-14T09:05:00Z", updatedAt: "2026-09-25T13:50:00Z" },[m
+[32m+[m[32m  { id: "f-103", findingCode: "F-103", source: "INTERNAL_INSPECTION", title: "Taxiway Pavement Pothole", description: "Pavement damage detected on Taxiway A requiring maintenance attention.", severity: "CRITICAL", status: "ASSIGNED", locationName: "Taxiway A", latitude: 33.599367, longitude: 130.443789, assignedTeam: "Pavement Team", createdBy: "u-2", createdAt: "2026-09-18T10:15:00Z", updatedAt: "2026-09-25T10:37:00Z" },[m
+   { id: "f-104", findingCode: "F-104", source: "INTERNAL_INSPECTION", title: "Apron Light Failure", description: "Floodlight near apron stand is not delivering full illumination.", severity: "MEDIUM", status: "FINDING", locationName: "Apron South", latitude: 5.30074, longitude: 100.27974, assetId: "asset-7", createdBy: "u-2", createdAt: "2026-09-16T14:12:00Z", updatedAt: "2026-09-25T11:00:00Z" },[m
+   { id: "f-105", findingCode: "F-105", source: "INTERNAL_INSPECTION", title: "Runway Sign Damage", description: "Runway signage at holding bay requires replacement.", severity: "MEDIUM", status: "WORK_ORDER", locationName: "Holding Bay", latitude: 5.29712, longitude: 100.27285, assetId: "asset-9", assignedTo: "u-1", assignedTeam: "Signage Team", targetCompletionDate: "2026-09-30", createdBy: "u-2", createdAt: "2026-09-11T07:18:00Z", updatedAt: "2026-09-25T12:25:00Z" },[m
+   { id: "f-106", findingCode: "F-106", source: "INTERNAL_INSPECTION", title: "Perimeter Fence Crack", description: "Fence segment along northern boundary has a damaged section.", severity: "LOW", status: "ASSIGNED", locationName: "Northern Boundary", latitude: 5.30254, longitude: 100.27262, assetId: "asset-8", assignedTeam: "Security Works", createdBy: "u-2", createdAt: "2026-09-12T15:40:00Z", updatedAt: "2026-09-25T08:04:00Z" },[m
+[36m@@ -196,7 +197,30 @@[m [mexport function loadDemoState(): DemoState {[m
+   }[m
+ [m
+   try {[m
+[31m-    return JSON.parse(raw) as DemoState;[m
+[32m+[m[32m    const storedState = JSON.parse(raw) as DemoState;[m
+[32m+[m[32m    return {[m
+[32m+[m[32m      ...storedState,[m
+[32m+[m[32m      findings: storedState.findings.map((finding) => {[m
+[32m+[m[32m        const demoFinding = defaultState.findings.find([m
+[32m+[m[32m          (item) => item.id === finding.id && (item.airportStandCode || item.id === "f-103"),[m
+[32m+[m[32m        );[m
+[32m+[m
+[32m+[m[32m        return demoFinding[m
+[32m+[m[32m          ? {[m
+[32m+[m[32m              ...finding,[m
+[32m+[m[32m              title: demoFinding.title,[m
+[32m+[m[32m              description: demoFinding.description,[m
+[32m+[m[32m              locationName: demoFinding.locationName,[m
+[32m+[m[32m              severity: demoFinding.severity,[m
+[32m+[m[32m              status: demoFinding.status,[m
+[32m+[m[32m              assignedTeam: demoFinding.assignedTeam,[m
+[32m+[m[32m              airportStandCode: demoFinding.airportStandCode,[m
+[32m+[m[32m              latitude: demoFinding.latitude,[m
+[32m+[m[32m              longitude: demoFinding.longitude,[m
+[32m+[m[32m            }[m
+[32m+[m[32m          : finding;[m
+[32m+[m[32m      }),[m
+[32m+[m[32m    };[m
+   } catch {[m
+     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));[m
+     return defaultState;[m

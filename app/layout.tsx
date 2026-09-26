@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AeroDIMMS Penang",
+  title: "AeroDIMMS | Fukuoka Airport",
   description: "Airport operations dashboard and issue management MVP",
 };
 
