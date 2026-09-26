@@ -10,6 +10,7 @@ export type InspectionType =
 export type Inspection = {
   id: string;
   inspector: string;
+  inspectorEmployeeId?: string; // Optional mapping for Supabase
   type: InspectionType;
   area: string;
   date: string;

@@ -1,12 +1,35 @@
 import {
   checklistByInspectionType,
   type CompletedInspectionRecord,
+  type EvidenceAttachment,
+  type FindingCategory,
+  type FindingDraft,
+  type FindingSeverity,
   type Inspection,
   type InspectionStatus,
 } from "@/lib/inspection-data";
 import { createClient } from "@/lib/supabase/client";
+import { saveFindingToSupabase } from "@/lib/supabase/finding-write";
 
 export type ChecklistAnswerValue = { result?: "Pass" | "Fail" | "N/A"; remark: string };
+export type CreateSupabaseInspectionInput = {
+  id: string;
+  inspectorEmployeeId?: string;
+  inspectorName: string;
+  type: Inspection["type"];
+  area: string;
+  scheduledDate: string;
+};
+export type InspectionFindingForSupabase = {
+  checklistItemId: string;
+  description: string;
+  category: FindingCategory;
+  severity: FindingSeverity;
+  area: string;
+  remarks: string;
+  gps: FindingDraft["gps"];
+  evidence: EvidenceAttachment[];
+};
 
 function displayDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })
@@ -14,16 +37,57 @@ function displayDate(value: string) {
 }
 
 export async function loadSupabaseInspections(): Promise<Inspection[]> {
-  const { data, error } = await createClient().from("inspections").select("*").order("scheduled_date");
-  if (error) throw error;
-  return (data ?? []).map((row) => ({
+  const supabase = createClient();
+  const rows = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("inspections")
+      .select("*")
+      .order("scheduled_date")
+      .order("id")
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < pageSize) break;
+  }
+
+  return rows.map((row) => ({
     id: row.id,
     inspector: row.inspector_name,
+    inspectorEmployeeId: row.inspector_employee_id ?? undefined,
     type: row.inspection_type as Inspection["type"],
     area: row.area,
     date: displayDate(row.scheduled_date),
     status: row.status as InspectionStatus,
   }));
+}
+
+export async function createSupabaseInspection(input: CreateSupabaseInspectionInput): Promise<Inspection> {
+  const { data, error } = await createClient()
+    .from("inspections")
+    .insert({
+      id: input.id,
+      inspector_employee_id: input.inspectorEmployeeId ?? null,
+      inspector_name: input.inspectorName,
+      inspection_type: input.type,
+      area: input.area,
+      scheduled_date: input.scheduledDate,
+      status: "Scheduled",
+    })
+    .select("id, inspector_employee_id, inspector_name, inspection_type, area, scheduled_date, status")
+    .single();
+  if (error) throw error;
+
+  return {
+    id: data.id,
+    inspector: data.inspector_name,
+    inspectorEmployeeId: data.inspector_employee_id ?? undefined,
+    type: data.inspection_type as Inspection["type"],
+    area: data.area,
+    date: displayDate(data.scheduled_date),
+    status: data.status as InspectionStatus,
+  };
 }
 
 export async function loadSupabaseInspectionExecution(inspection: Inspection) {
@@ -127,7 +191,35 @@ export async function markSupabaseInspectionInProgress(inspection: Inspection) {
   if (error) throw error;
 }
 
-export async function completeSupabaseInspection(inspection: Inspection, answers: Record<string, ChecklistAnswerValue>) {
+export async function completeSupabaseInspection(
+  inspection: Inspection,
+  answers: Record<string, ChecklistAnswerValue>,
+  findings: InspectionFindingForSupabase[] = [],
+) {
+  const supabase = createClient();
+  for (const finding of findings) {
+    const { data: existingFinding, error } = await supabase
+      .from("findings")
+      .select("id")
+      .eq("source_inspection_id", inspection.id)
+      .eq("checklist_item_id", finding.checklistItemId)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (existingFinding) continue;
+
+    const draft: FindingDraft = {
+      description: finding.description,
+      category: finding.category,
+      severity: finding.severity,
+      area: finding.area,
+      remarks: finding.remarks,
+      gps: finding.gps,
+      evidence: finding.evidence,
+    };
+    await saveFindingToSupabase(draft, inspection, finding.checklistItemId);
+  }
+
   await saveSupabaseChecklistAnswers(inspection, answers);
   const completedAt = new Date().toISOString();
   const { error } = await createClient().from("inspections").update({ status: "Completed", completed_at: completedAt, updated_at: completedAt }).eq("id", inspection.id);
