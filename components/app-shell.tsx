@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { setStoredUser } from "@/lib/demo-data";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -43,6 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const logout = () => {
+    setStoredUser(null);
     createClient().auth.signOut().finally(() => {
       setCurrentUser(null);
       router.replace("/login");

@@ -58,7 +58,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
     const nextEntry: IssueHistoryEntry = {
       id: `h-${Math.random().toString(36).slice(2, 9)}`,
       findingId: finding.id,
-      userId: currentUser?.id ?? "u-1",
+      userId: currentUser?.employee_id ?? "PEN12345",
       action,
       previousStatus: finding.status,
       newStatus: nextStatus,
@@ -88,7 +88,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
       fileName: file.name,
       storagePath: `evidence/${finding.id}/${file.name}`,
       mimeType: file.type || "application/octet-stream",
-      uploadedBy: currentUser?.id ?? "u-1",
+      uploadedBy: currentUser?.employee_id ?? "PEN12345",
       createdAt: new Date().toISOString(),
     };
 
@@ -100,7 +100,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
         {
           id: `h-${Math.random().toString(36).slice(2, 9)}`,
           findingId: finding.id,
-          userId: currentUser?.id ?? "u-1",
+          userId: currentUser?.employee_id ?? "PEN12345",
           action: "Evidence uploaded",
           previousStatus: finding.status,
           newStatus: finding.status,
