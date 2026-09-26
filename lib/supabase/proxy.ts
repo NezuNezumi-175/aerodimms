@@ -29,7 +29,15 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const { data: { user } } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    // Proxy performs an optimistic route check from the cookie session so a
+    // page navigation does not depend on reaching Auth while offline.
+    const { data: { session } } = await supabase.auth.getSession();
+    user = session?.user ?? null;
+  } catch {
+    user = null;
+  }
   const isLoginPage = request.nextUrl.pathname === "/login";
 
   if (!user && !isLoginPage) {

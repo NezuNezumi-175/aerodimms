@@ -7,8 +7,9 @@ import { createFindingEvidence, requestFindingGps } from "@/lib/finding-form";
 import { loadDemoState, type DemoState } from "@/lib/demo-data";
 import { isDemoMode } from "@/lib/app-data";
 import { saveManualFinding } from "@/lib/inspection-workflow";
-import { saveFindingToSupabase } from "@/lib/supabase/finding-write";
 import { loadSupabaseInspections } from "@/lib/supabase/inspection-write";
+import { cacheOfflineInspections, getOfflineInspections } from "@/lib/offline-db";
+import { saveFindingToLocalQueue, syncPendingOfflineChanges } from "@/lib/offline-sync";
 import { useNetworkStatus } from "@/lib/use-network-status";
 import {
   allInspections,
@@ -133,14 +134,17 @@ export function InspectionsPanel() {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [evidenceError, setEvidenceError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [syncError, setSyncError] = useState("");
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const isOnline = useNetworkStatus();
 
   useEffect(() => {
     let active = true;
-    queueMicrotask(() => {
-      if (active) setDemoState(loadDemoState());
-    });
+    if (isDemoMode()) {
+      queueMicrotask(() => { if (active) setDemoState(loadDemoState()); });
+    } else {
+      setDemoState({ assets: [], findings: [], workOrders: [], evidence: [], issueHistory: [] });
+    }
     return () => {
       active = false;
     };
@@ -148,22 +152,38 @@ export function InspectionsPanel() {
 
   useEffect(() => {
     if (isDemoMode()) return;
-    if (!isOnline) {
-      setSupabaseInspections(allInspections);
-      setInspectionLoadError("");
-      return;
-    }
     let active = true;
+    if (!isOnline) {
+      getOfflineInspections().then((items) => {
+        if (active) {
+          setSupabaseInspections(items);
+          setInspectionLoadError(items.length ? "" : "No cloud inspections are cached on this device yet. Connect to the internet once to load them.");
+        }
+      }).catch((error) => {
+        if (active) setInspectionLoadError(error instanceof Error ? error.message : "Could not read cached inspections.");
+      });
+      return () => { active = false; };
+    }
     loadSupabaseInspections().then((items) => {
       if (active) setSupabaseInspections(items);
+      void cacheOfflineInspections(items).catch((error) => console.error("Unable to cache inspections locally.", error));
     }).catch((error) => {
       if (active) {
         setInspectionLoadError(error instanceof Error ? error.message : "Could not load inspections from Supabase.");
-        setSupabaseInspections([]);
+        void getOfflineInspections().then((items) => { if (active) setSupabaseInspections(items); });
       }
     });
     return () => { active = false; };
   }, [isOnline]);
+
+  useEffect(() => {
+    const handleSyncComplete = (event: Event) => {
+      const result = (event as CustomEvent<{ errors: string[] }>).detail;
+      setSyncError(result.errors[0] ?? "");
+    };
+    window.addEventListener("aerodimms:offline-sync-complete", handleSyncComplete);
+    return () => window.removeEventListener("aerodimms:offline-sync-complete", handleSyncComplete);
+  }, []);
 
   useEffect(() => {
     const retainedUrls = new Set(findingDraft.evidence.map((attachment) => attachment.previewUrl));
@@ -187,7 +207,7 @@ export function InspectionsPanel() {
     return <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading inspections…</div>;
   }
 
-  const inspectionRows = isDemoMode() || !isOnline ? allInspections : supabaseInspections ?? [];
+  const inspectionRows = isDemoMode() ? allInspections : supabaseInspections ?? [];
   const completedRecords = demoState.completedInspectionRecords ?? [];
   const completedIds = new Set(completedRecords.map((record) => record.inspection.id));
   const activeScheduled = inspectionRows.filter((inspection) => inspection.status === "Scheduled" && !completedIds.has(inspection.id));
@@ -251,18 +271,40 @@ export function InspectionsPanel() {
     }
 
     setIsSavingFinding(true);
+    setSyncError("");
     try {
-      const finding = isDemoMode() || !isOnline
-        ? await saveManualFinding(draft, relatedInspection)
-        : await saveFindingToSupabase(draft, relatedInspection);
-      if (isDemoMode() || !isOnline) setDemoState(loadDemoState());
+      let findingCode: string;
+      let cloudSyncPending = !isOnline;
+      let cloudSyncError = "";
+      if (isDemoMode()) {
+        const finding = await saveManualFinding(draft, relatedInspection);
+        findingCode = finding.findingCode;
+        setDemoState(loadDemoState());
+      } else {
+        const record = await saveFindingToLocalQueue(draft, "manual", relatedInspection);
+        findingCode = `F-${record.findingId.replace(/[^a-zA-Z0-9]/g, "").slice(-12).toUpperCase()}`;
+        if (isOnline) {
+          try {
+            const result = await syncPendingOfflineChanges();
+            const currentFindingError = result.errors.find((message) => message.startsWith(`${record.findingId}:`));
+            cloudSyncPending = Boolean(currentFindingError);
+            if (currentFindingError) cloudSyncError = currentFindingError;
+          } catch (error) {
+            cloudSyncPending = true;
+            cloudSyncError = error instanceof Error ? error.message : "Connection to Supabase failed.";
+          }
+        }
+        setSyncError(cloudSyncError);
+      }
       setFindingFormOpen(false);
       setFindingDraft(createEmptyFindingDraft());
       setSuccessMessage(isDemoMode()
-        ? `${finding.findingCode} saved locally.`
+        ? `${findingCode} saved locally.`
         : !isOnline
-          ? `${finding.findingCode} saved locally. Pending sync.`
-          : `${finding.findingCode} saved to Supabase with its GPS and evidence.`);
+          ? "Offline: Finding saved locally. It will be sent to the cloud automatically once the connection is restored."
+          : cloudSyncPending
+            ? ""
+            : `${findingCode} saved locally and synchronized to Supabase.`);
     } catch (error) {
       setFindingFormError(`Unable to save this Finding: ${getSaveErrorMessage(error)}`);
     } finally {
@@ -308,6 +350,11 @@ export function InspectionsPanel() {
       {successMessage ? (
         <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
           {successMessage}
+        </p>
+      ) : null}
+      {syncError ? (
+        <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          Finding is saved locally, but cloud sync failed: {syncError}. The app will retry automatically while online.
         </p>
       ) : null}
 

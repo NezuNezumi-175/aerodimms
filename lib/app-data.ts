@@ -8,6 +8,8 @@ import {
   type WorkOrder,
 } from "@/lib/demo-data";
 import { createClient } from "@/lib/supabase/client";
+import { cacheOfflineAppState, getAllOfflineFindings, getOfflineAppState, getOfflineEvidenceForFinding } from "@/lib/offline-db";
+import type { InternalInspectionFinding } from "@/lib/inspection-data";
 
 export function isDemoMode() {
   return process.env.NEXT_PUBLIC_DEMO_MODE === "true";
@@ -110,6 +112,45 @@ function mapHistory(row: SupabaseHistory): IssueHistoryEntry {
 export async function loadAppState(): Promise<DemoState> {
   if (isDemoMode()) return loadDemoState();
 
+  const withPendingLocalFindings = async (state: DemoState) => {
+    const pending = (await getAllOfflineFindings().catch(() => [])).filter((record) => record.syncStatus !== "synced");
+    const localFindings: InternalInspectionFinding[] = await Promise.all(pending.map(async (record) => {
+      const evidence = await getOfflineEvidenceForFinding(record.id).catch(() => []);
+      const severity = record.severity.toUpperCase() as InternalInspectionFinding["severity"];
+      return {
+        id: record.findingId,
+        findingCode: `F-${record.findingId.replace(/[^a-zA-Z0-9]/g, "").slice(-12).toUpperCase()}`,
+        source: "INTERNAL_INSPECTION",
+        sourceInspectionId: record.inspectionId,
+        sourceFindingId: record.findingId,
+        checklistItemId: record.checklistItemId,
+        checklistItemTitle: record.checklistItemTitle,
+        title: record.description.slice(0, 120),
+        description: record.description,
+        category: record.category,
+        severity,
+        status: "FINDING",
+        locationName: record.area,
+        latitude: record.gps?.latitude,
+        longitude: record.gps?.longitude,
+        capturedAt: record.gps?.capturedAt,
+        gps: record.gps,
+        evidence: evidence.map((item) => ({ localId: item.id, fileName: item.fileName, fileType: item.fileType, fileSize: item.fileSize })),
+        inspectorRemarks: record.remarks,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      };
+    }));
+    const localIds = new Set(localFindings.map((item) => item.id));
+    return {
+      ...state,
+      internalInspectionFindings: [
+        ...(state.internalInspectionFindings ?? []).filter((item) => !localIds.has(item.id)),
+        ...localFindings,
+      ],
+    };
+  };
+
   const supabase = createClient();
   const [assets, findings, workOrders, evidence, issueHistory] = await Promise.all([
     supabase.from("assets").select("*").order("id"),
@@ -120,13 +161,19 @@ export async function loadAppState(): Promise<DemoState> {
   ]);
 
   const result = [assets, findings, workOrders, evidence, issueHistory].find((query) => query.error);
-  if (result?.error) throw result.error;
+  if (result?.error) {
+    const cachedState = await getOfflineAppState<DemoState>().catch(() => undefined);
+    if (cachedState) return withPendingLocalFindings(cachedState);
+    throw result.error;
+  }
 
-  return {
+  const cloudState: DemoState = {
     assets: (assets.data ?? []).map((row) => mapAsset(row as SupabaseAsset)),
     findings: (findings.data ?? []).map((row) => mapFinding(row as SupabaseFinding)),
     workOrders: (workOrders.data ?? []).map((row) => mapWorkOrder(row as SupabaseWorkOrder)),
     evidence: (evidence.data ?? []).map((row) => mapEvidence(row as SupabaseEvidence)),
     issueHistory: (issueHistory.data ?? []).map((row) => mapHistory(row as SupabaseHistory)),
   };
+  await cacheOfflineAppState(cloudState).catch(() => undefined);
+  return withPendingLocalFindings(cloudState);
 }

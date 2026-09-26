@@ -3,25 +3,33 @@ import { createClient } from "@/lib/supabase/client";
 
 const EVIDENCE_BUCKET = "finding-evidence";
 
+export type FindingSyncIdentity = {
+  findingId?: string;
+  findingCode?: string;
+  sourceFindingId?: string;
+};
+
 function safeFileName(fileName: string) {
   return fileName.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "image";
 }
 
 export async function saveFindingToSupabase(
   draft: FindingDraft,
-  relatedInspection?: Inspection,
+  relatedInspection?: Pick<Inspection, "id" | "area">,
   checklistItemId?: string,
   existingFindingId?: string,
+  syncIdentity?: FindingSyncIdentity,
 ) {
   const supabase = createClient();
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  const { data: { session }, error: userError } = await supabase.auth.getSession();
   if (userError) throw userError;
+  const user = session?.user ?? null;
   if (!user) throw new Error("Sign in before saving a finding to Supabase.");
 
   const idToken = crypto.randomUUID();
-  const findingId = existingFindingId ?? `internal-${idToken}`;
-  let sourceFindingId = idToken;
-  let findingCode = `F-MAN-${idToken.slice(0, 8).toUpperCase()}`;
+  const findingId = existingFindingId ?? syncIdentity?.findingId ?? `internal-${idToken}`;
+  let sourceFindingId = syncIdentity?.sourceFindingId ?? idToken;
+  let findingCode = syncIdentity?.findingCode ?? `F-MAN-${idToken.slice(0, 8).toUpperCase()}`;
   if (existingFindingId) {
     const { data, error } = await supabase.from("findings").select("finding_code, source_finding_id").eq("id", existingFindingId).single();
     if (error) throw error;
@@ -43,11 +51,11 @@ export async function saveFindingToSupabase(
   try {
     const evidenceRows = [];
     for (const attachment of draft.evidence) {
-      const evidenceId = crypto.randomUUID();
-      const storagePath = `${user.id}/${findingId}/${evidenceId}-${safeFileName(attachment.fileName)}`;
+      const evidenceId = syncIdentity ? attachment.localId : crypto.randomUUID();
+      const storagePath = `${user.id}/${findingId}/${safeFileName(evidenceId)}-${safeFileName(attachment.fileName)}`;
       const { error: uploadError } = await supabase.storage
         .from(EVIDENCE_BUCKET)
-        .upload(storagePath, attachment.file, { contentType: attachment.fileType, upsert: false });
+        .upload(storagePath, attachment.file, { contentType: attachment.fileType, upsert: Boolean(syncIdentity) });
       if (uploadError) throw uploadError;
       uploadedPaths.push(storagePath);
       evidenceRows.push({
@@ -78,7 +86,13 @@ export async function saveFindingToSupabase(
       checklist_item_id: checklistItemId ?? null,
       updated_at: now,
     };
-    const findingResult = existingFindingId
+    let findingExists = Boolean(existingFindingId);
+    if (syncIdentity && !findingExists) {
+      const { data, error } = await supabase.from("findings").select("id").eq("id", findingId).maybeSingle();
+      if (error) throw error;
+      findingExists = Boolean(data);
+    }
+    const findingResult = findingExists
       ? await supabase.from("findings").update(findingValues).eq("id", findingId)
       : await supabase.from("findings").insert({
           ...findingValues,
@@ -92,7 +106,17 @@ export async function saveFindingToSupabase(
     if (findingError) throw findingError;
 
     if (evidenceRows.length) {
-      const { error: evidenceError } = await supabase.from("evidence").insert(evidenceRows);
+      const rowsToInsert = syncIdentity
+        ? await (async () => {
+            const { data, error } = await supabase.from("evidence").select("id").in("id", evidenceRows.map((row) => row.id));
+            if (error) throw error;
+            const existingIds = new Set((data ?? []).map((row) => row.id));
+            return evidenceRows.filter((row) => !existingIds.has(row.id));
+          })()
+        : evidenceRows;
+      const { error: evidenceError } = rowsToInsert.length
+        ? await supabase.from("evidence").insert(rowsToInsert)
+        : { error: null };
       if (evidenceError) throw evidenceError;
     }
   } catch (error) {

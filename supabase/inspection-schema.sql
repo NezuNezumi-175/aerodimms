@@ -77,6 +77,11 @@ drop policy if exists "Authenticated users can upload own finding evidence" on s
 create policy "Authenticated users can upload own finding evidence"
   on storage.objects for insert to authenticated
   with check (bucket_id = 'finding-evidence' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "Authenticated users can update own finding evidence" on storage.objects;
+create policy "Authenticated users can update own finding evidence"
+  on storage.objects for update to authenticated
+  using (bucket_id = 'finding-evidence' and (storage.foldername(name))[1] = (select auth.uid())::text)
+  with check (bucket_id = 'finding-evidence' and (storage.foldername(name))[1] = (select auth.uid())::text);
 drop policy if exists "Authenticated users can read finding evidence" on storage.objects;
 create policy "Authenticated users can read finding evidence"
   on storage.objects for select to authenticated
