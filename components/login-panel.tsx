@@ -132,10 +132,28 @@ export function LoginPanel() {
             Role: INSPECTOR
           </p>
           <p>
-            Email: demo.user@example.com
+            Email: demo.user1@example.com
           </p>
           <p>
-            Password: DemoUser_2026!Map42
+            Password: pasword123
+          </p>
+          <p className="mt-1">
+            Role: MAINTENANCE_ENGINEER
+          </p>
+          <p>
+            Email: demo.user2@example.com
+          </p>
+          <p>
+            Password: password123
+          </p>
+          <p className="mt-1">
+            Role: OPERATIONS_MANAGER
+          </p>
+          <p>
+            Email: demo.user3@example.com
+          </p>
+          <p>
+            Password: password123
           </p>
         </div>
       </div>
