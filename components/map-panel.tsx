@@ -337,7 +337,7 @@ export function MapPanel() {
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-2 text-sm text-slate-600">
               <input type="checkbox" checked={showAirport} onChange={() => setShowAirport((value) => !value)} />
-              福岡空港スポット
+              Docking Chart
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-600">
               <input type="checkbox" checked={showAssets} onChange={() => setShowAssets((value) => !value)} />
