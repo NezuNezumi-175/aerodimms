@@ -57,7 +57,21 @@ export function OperationManagerPanel() {
     try {
       if (isDemoMode()) {
         const demoState = loadDemoState();
-        const nextState = { ...demoState, findings: demoState.findings.map((item) => item.id === finding.id ? { ...item, assignedTeam: normalizedTeam ?? undefined, updatedAt: new Date().toISOString() } : item) };
+        const now = new Date().toISOString();
+        const nextState = {
+          ...demoState,
+          findings: demoState.findings.map((item) => item.id === finding.id ? { ...item, assignedTeam: normalizedTeam ?? undefined, updatedAt: now } : item),
+          issueHistory: [...demoState.issueHistory, {
+            id: `h-${Math.random().toString(36).slice(2, 9)}`,
+            findingId: finding.id,
+            userId: getStoredUser()?.employee_id ?? "",
+            action: normalizedTeam ? "Team assigned" : "Team assignment cleared",
+            previousStatus: finding.status,
+            newStatus: finding.status,
+            remarks: normalizedTeam ?? undefined,
+            createdAt: now,
+          }],
+        };
         saveDemoState(nextState);
         setState(nextState);
       } else {

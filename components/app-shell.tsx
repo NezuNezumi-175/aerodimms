@@ -24,8 +24,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : "bg-amber-500/15 text-amber-200";
   const isInspectionRoute = pathname === "/inspections" || pathname.startsWith("/inspections/");
   const isOperationManagerRoute = pathname === "/operation-manager" || pathname.startsWith("/operation-manager/");
+  const isNotificationsRoute = pathname === "/notifications" || pathname.startsWith("/notifications/");
   const canAccessInspections = currentRole === "INSPECTOR" || currentRole === "OPERATIONS_MANAGER";
   const canManageIssues = currentRole === "OPERATIONS_MANAGER";
+  const canAccessNotifications = currentRole === "MAINTENANCE_ENGINEER";
 
   useEffect(() => {
     let active = true;
@@ -81,6 +83,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [canManageIssues, isOperationManagerRoute, profileLoaded, router]);
 
+  useEffect(() => {
+    if (isNotificationsRoute && profileLoaded && !canAccessNotifications) {
+      router.replace("/dashboard");
+    }
+  }, [canAccessNotifications, isNotificationsRoute, profileLoaded, router]);
+
   if (pathname === "/login" || pathname === "/") {
     return <>{children}</>;
   }
@@ -101,6 +109,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">You do not have access to Operation Manager.</div>;
   }
 
+  if (isNotificationsRoute && !profileLoaded) {
+    return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">Checking access…</div>;
+  }
+
+  if (isNotificationsRoute && !canAccessNotifications) {
+    return <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-600">You do not have access to Notifications.</div>;
+  }
+
   const logout = () => {
     setStoredUser(null);
     if (isDemoMode()) {
@@ -119,6 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/dashboard", label: "Dashboard" },
     ...(canAccessInspections ? [{ href: "/inspections", label: "Inspections" }] : []),
     ...(canManageIssues ? [{ href: "/operation-manager", label: "Team Assignment" }] : []),
+    ...(canAccessNotifications ? [{ href: "/notifications", label: "Notifications" }] : []),
     { href: "/map", label: "Map" },
     { href: "/issues", label: "Issues" },
   ];
