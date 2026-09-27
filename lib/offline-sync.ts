@@ -1,11 +1,11 @@
 import {
-  getOfflineSyncQueue, acknowledgeOfflineFindingSync, markOfflineProgressSynced,
+  getOfflineSyncQueue, acknowledgeOfflineFindingSync, markOfflineFindingOrphaned, markOfflineProgressSynced,
 } from "@/lib/offline-db";
 import { createClient } from "@/lib/supabase/client";
 import {
   loadSupabaseInspections, markSupabaseInspectionInProgress, saveSupabaseChecklistAnswers, assertInspectionDependenciesSynced,
 } from "@/lib/supabase/inspection-write";
-import { syncOfflineFinding } from "@/lib/supabase/offline-write";
+import { ConfirmedMissingLinkedFindingError, syncOfflineFinding } from "@/lib/supabase/offline-write";
 
 export type OfflineSyncResult = { errors: string[]; pending: boolean };
 let running: Promise<OfflineSyncResult> | null = null;
@@ -59,6 +59,14 @@ async function processQueue(): Promise<OfflineSyncResult> {
       await acknowledgeOfflineFindingSync(finding.record, receipt.id, receipt.serverUpdatedAt, receipt.findingCode);
       synchronized = true;
     } catch (error) {
+      if (error instanceof ConfirmedMissingLinkedFindingError
+          && (finding.record.serverId || finding.record.serverUpdatedAt
+            || (!finding.record.internalId && finding.record.findingId.startsWith("internal-")))) {
+        if (await markOfflineFindingOrphaned(finding.record)) {
+          synchronized = true;
+          continue;
+        }
+      }
       errors.push(`Finding ${finding.record.findingId}: ${errorMessage(error)}`);
     }
   }

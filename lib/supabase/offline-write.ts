@@ -4,6 +4,13 @@ import { createClient } from "@/lib/supabase/client";
 import { EVIDENCE_BUCKET, safeFileName } from "@/lib/supabase/finding-write";
 import { insertFindingWithUniqueCode } from "@/lib/supabase/finding-code";
 
+export class ConfirmedMissingLinkedFindingError extends Error {
+  constructor(serverId: string) {
+    super(`Linked server finding ${serverId} no longer exists.`);
+    this.name = "ConfirmedMissingLinkedFindingError";
+  }
+}
+
 async function sameContent(left: Blob, right: Blob) {
   const [leftHash, rightHash] = await Promise.all([
     left.arrayBuffer().then((bytes) => crypto.subtle.digest("SHA-256", bytes)),
@@ -38,7 +45,9 @@ export async function syncOfflineFinding({ record, evidence }: OfflineFindingWit
   if (record.evidenceIds.some((id) => !evidence.some((item) => item.id === id))) {
     throw new Error("A referenced local evidence blob is missing. The finding remains pending.");
   }
-  const knownServerId = record.serverId ?? (!record.internalId && record.findingId.startsWith("internal-") ? record.findingId : undefined);
+  const knownServerId = record.serverId
+    ?? (record.serverUpdatedAt ? record.internalId ?? (record.findingId.startsWith("internal-") ? record.findingId : undefined) : undefined)
+    ?? (!record.internalId && record.findingId.startsWith("internal-") ? record.findingId : undefined);
   const localId = knownServerId ?? record.internalId ?? (record.kind === "manual"
     ? record.id.slice("manual:".length)
     : `internal-${record.inspectionId}-${record.findingId}`);
@@ -52,7 +61,9 @@ export async function syncOfflineFinding({ record, evidence }: OfflineFindingWit
     return data;
   };
   let existing = await findExisting();
-  if (knownServerId && !existing) throw new Error(`Linked server finding ${knownServerId} is missing or unreadable. Local data remains pending.`);
+  // maybeSingle() only returns null here after a successful authenticated read;
+  // Supabase/network/auth errors above still throw and remain retryable.
+  if (knownServerId && !existing) throw new ConfirmedMissingLinkedFindingError(knownServerId);
   if (existing && (existing.source_inspection_id !== (record.inspectionId ?? null)
       || existing.checklist_item_id !== (record.checklistItemId ?? null))) {
     throw new Error(`Server finding ${existing.id} belongs to a different inspection/checklist item. Local data remains pending.`);

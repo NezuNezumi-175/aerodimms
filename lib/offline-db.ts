@@ -1,6 +1,6 @@
 import type { GpsLocation, Inspection } from "@/lib/inspection-data";
 
-export type SyncStatus = "pending" | "syncing" | "synced" | "failed";
+export type SyncStatus = "pending" | "syncing" | "synced" | "failed" | "orphaned";
 export type OfflineFindingKind = "manual" | "checklist";
 
 export type OfflineFindingRecord = {
@@ -331,10 +331,30 @@ export async function getOfflineSyncQueue() {
     done,
   ]);
   return {
-    findings: findings.filter((record) => record.syncStatus !== "synced" || evidence.some((item) => item.findingRecordId === record.id && item.syncStatus !== "synced"))
+    findings: findings.filter((record) => record.syncStatus !== "orphaned"
+      && (record.syncStatus !== "synced" || evidence.some((item) => item.findingRecordId === record.id && item.syncStatus !== "synced")))
       .map((record) => ({ record, evidence: evidence.filter((item) => item.findingRecordId === record.id) })),
     progress: progress.filter((record) => record.syncStatus !== "synced"),
   };
+}
+
+// Preserve the local snapshot while removing a server-deleted link from retries.
+// Compare its revision so a concurrent local edit remains pending for review.
+export async function markOfflineFindingOrphaned(record: OfflineFindingRecord) {
+  const database = await openDatabase();
+  const transaction = database.transaction(FINDINGS_STORE, "readwrite");
+  const done = transactionComplete(transaction);
+  const store = transaction.objectStore(FINDINGS_STORE);
+  const request = store.get(record.id);
+  request.onsuccess = () => {
+    const current: OfflineFindingRecord | undefined = request.result;
+    if (current && current.updatedAt === record.updatedAt && current.serverId === record.serverId) {
+      store.put({ ...current, syncStatus: "orphaned" });
+    }
+  };
+  await done;
+  const latest = await getAllOfflineFindings();
+  return latest.find((item) => item.id === record.id)?.syncStatus === "orphaned";
 }
 
 // Compare the uploaded revision before marking it; edits made during an upload stay pending.
