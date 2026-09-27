@@ -226,7 +226,7 @@ export function loadDemoState(): DemoState {
       return value;
     };
 
-    let normalizedFindings = storedState.findings.map((finding) => {
+    let normalizedFindings: Finding[] = storedState.findings.map((finding) => {
       const demoFinding = defaultState.findings.find(
         (item) => item.id === finding.id && (item.airportStandCode || item.id === "f-103"),
       );
