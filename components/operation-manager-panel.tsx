@@ -43,7 +43,8 @@ export function OperationManagerPanel() {
     return unassignedOrder || b.updatedAt.localeCompare(a.updatedAt);
   }) : [], [state]);
   const unassignedCount = issues.filter((finding) => !finding.assignedTeam).length;
-  const pendingReviewCount = issues.filter((finding) => finding.status === "PENDING_VERIFICATION").length;
+  const pendingReviews = issues.filter((finding) => finding.status === "PENDING_VERIFICATION");
+  const pendingReviewCount = pendingReviews.length;
   const teams = useMemo(() => [...new Set([...teamSuggestions, ...issues.map((finding) => finding.assignedTeam).filter((team): team is string => Boolean(team))])], [issues]);
 
   async function saveTeam(finding: Finding) {
@@ -152,6 +153,27 @@ export function OperationManagerPanel() {
 
       {notice ? <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</p> : null}
       {error ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p> : null}
+
+      <section className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div><h2 className="font-semibold text-slate-900">Pending Verification</h2><p className="mt-0.5 text-sm text-slate-600">Review maintenance work and before/after evidence.</p></div>
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">{pendingReviewCount}</span>
+        </div>
+        {pendingReviews.length ? (
+          <ul className="mt-4 divide-y divide-slate-100">
+            {pendingReviews.map((finding) => (
+              <li key={finding.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-900">{finding.findingCode} · {finding.title}</p>
+                  <p className="mt-1 text-sm text-slate-600">{finding.description}</p>
+                  <p className="mt-1 text-xs text-slate-500">{finding.assignedTeam ?? "Unassigned"} · {finding.locationName} · {finding.severity}</p>
+                </div>
+                <Link href={`/issues/${encodeURIComponent(finding.id)}`} className="shrink-0 rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800">Review evidence</Link>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="mt-4 text-sm text-slate-500">No issues are waiting for verification.</p>}
+      </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">

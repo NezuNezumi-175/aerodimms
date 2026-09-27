@@ -347,6 +347,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
             <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Issue detail</p>
             <h1 className="mt-2 text-3xl font-bold text-slate-900">{finding.findingCode}</h1>
             <h2 className="mt-2 text-2xl font-semibold text-slate-800">{finding.title}</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{finding.description}</p>
           </div>
           <div className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">{finding.status}</div>
         </div>
@@ -405,6 +406,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
               <>
                 <p><span className="font-semibold text-slate-800">Work Order:</span> {workOrder.workOrderCode}</p>
                 <p><span className="font-semibold text-slate-800">Corrective Action:</span> {workOrder.correctiveAction}</p>
+                <p><span className="font-semibold text-slate-800">Maintenance Notes:</span> {workOrder.remarks || "None"}</p>
                 <p><span className="font-semibold text-slate-800">Assigned Team:</span> {workOrder.assignedTeam ?? "Unassigned"}</p>
                 <p><span className="font-semibold text-slate-800">Due:</span> {workOrder.targetCompletionDate ?? "Not set"}</p>
               </>
@@ -439,22 +441,18 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
                   <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
-                      onClick={() => updateFindingStatus("CLOSED", "Issue approved and closed", "Approved by Operation Manager")}
+                      onClick={() => updateFindingStatus("CLOSED", "Issue verified and closed", "Verified by Operation Manager")}
                       disabled={isSaving}
                       className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                     >
-                      {isSaving ? "Saving…" : "Approve & Close"}
+                      {isSaving ? "Saving…" : "Verify"}
                     </button>
                     <button
                       type="button"
                       onClick={() => {
-                        const reason = window.prompt("Why are you rejecting this issue? The reason will be recorded in its history.");
+                        const reason = window.prompt("Optional: add a note for the maintenance team.");
                         if (reason === null) return;
-                        if (!reason.trim()) {
-                          setSaveError("Enter a reason for rejecting the issue.");
-                          return;
-                        }
-                        void updateFindingStatus("IN_PROGRESS", "Issue rejected", reason.trim());
+                        void updateFindingStatus("IN_PROGRESS", "Issue rejected", reason.trim() || undefined);
                       }}
                       disabled={isSaving}
                       className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-60"
