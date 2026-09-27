@@ -162,6 +162,15 @@ begin
     raise exception 'Invalid finding status transition';
   end if;
 
+  if v_previous_status = 'PENDING_VERIFICATION'
+    and p_new_status in ('CLOSED', 'IN_PROGRESS')
+    and not exists (
+      select 1 from public.profiles
+      where id = (select auth.uid()) and role = 'OPERATIONS_MANAGER'
+    ) then
+    raise exception 'Only an Operation Manager can approve or reject a finding';
+  end if;
+
   if v_previous_status = 'IN_PROGRESS' and p_new_status = 'PENDING_VERIFICATION' and not (
     exists (select 1 from public.evidence where finding_id = p_finding_id and phase = 'BEFORE')
     and exists (select 1 from public.evidence where finding_id = p_finding_id and phase = 'AFTER')

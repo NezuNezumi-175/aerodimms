@@ -49,6 +49,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
   const [saveMessage, setSaveMessage] = useState("");
   const [signedEvidenceUrls, setSignedEvidenceUrls] = useState<Record<string, string>>({});
   const currentUser = getStoredUser();
+  const isOperationManager = currentUser?.role === "OPERATIONS_MANAGER";
 
   const syncRevision = useSyncRefresh();
   useEffect(() => {
@@ -322,7 +323,7 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
       case "IN_PROGRESS":
         return { label: "Submit for Verification", nextStatus: "PENDING_VERIFICATION", action: "Submitted for verification" };
       case "PENDING_VERIFICATION":
-        return { label: "Verify & Close", nextStatus: "CLOSED", action: "Verified and closed" };
+        return isOperationManager ? { label: "Approve & Close", nextStatus: "CLOSED", action: "Issue approved and closed" } : null;
       case "CLOSED":
         return null;
       default:
@@ -425,31 +426,46 @@ export function IssueDetailPanel({ findingCode }: IssueDetailPanelProps) {
                 {isSaving ? "Saving…" : primaryAction.label}
               </button>
             ) : (
-              <div className="mt-3 rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-600">Closed</div>
+              <div className="mt-3 rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-600">{finding.status === "CLOSED" ? "Closed" : "Awaiting Operation Manager review"}</div>
             )}
             {finding.status === "IN_PROGRESS" && !hasRequiredEvidence ? (
               <p className="text-sm text-amber-800">Before-work and after-work photos are required. Missing: {[!hasBeforePhoto ? "before work" : null, !hasAfterPhoto ? "after work" : null].filter(Boolean).join(" and ")}.</p>
             ) : null}
 
             {finding.status === "PENDING_VERIFICATION" ? (
-              <div className="flex flex-wrap gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => updateFindingStatus("CLOSED", "Verify and close", "Accepted by verifier")}
-                  disabled={isSaving}
-                  className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
-                >
-                  Verify & Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateFindingStatus("IN_PROGRESS", "Return for further action", "Returned for additional work")}
-                  disabled={isSaving}
-                  className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100"
-                >
-                  Return for Further Action
-                </button>
-              </div>
+              isOperationManager ? (
+                <div className="space-y-2 pt-2">
+                  <p className="text-sm text-slate-600">Review the submitted evidence, then approve the completed issue or reject it and return it for more work.</p>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => updateFindingStatus("CLOSED", "Issue approved and closed", "Approved by Operation Manager")}
+                      disabled={isSaving}
+                      className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                    >
+                      {isSaving ? "Saving…" : "Approve & Close"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reason = window.prompt("Why are you rejecting this issue? The reason will be recorded in its history.");
+                        if (reason === null) return;
+                        if (!reason.trim()) {
+                          setSaveError("Enter a reason for rejecting the issue.");
+                          return;
+                        }
+                        void updateFindingStatus("IN_PROGRESS", "Issue rejected", reason.trim());
+                      }}
+                      disabled={isSaving}
+                      className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-60"
+                    >
+                      {isSaving ? "Saving…" : "Reject & Return for Work"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800">This issue is awaiting review by an Operation Manager.</p>
+              )
             ) : null}
             {saveError ? <p role="alert" className="text-sm text-red-700">{saveError}</p> : null}
             {saveMessage ? <p role="status" className="text-sm text-emerald-700">{saveMessage}</p> : null}

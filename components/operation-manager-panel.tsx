@@ -43,6 +43,7 @@ export function OperationManagerPanel() {
     return unassignedOrder || b.updatedAt.localeCompare(a.updatedAt);
   }) : [], [state]);
   const unassignedCount = issues.filter((finding) => !finding.assignedTeam).length;
+  const pendingReviewCount = issues.filter((finding) => finding.status === "PENDING_VERIFICATION").length;
   const teams = useMemo(() => [...new Set([...teamSuggestions, ...issues.map((finding) => finding.assignedTeam).filter((team): team is string => Boolean(team))])], [issues]);
 
   async function saveTeam(finding: Finding) {
@@ -123,9 +124,15 @@ export function OperationManagerPanel() {
           <h1 className="mt-1 text-2xl font-bold text-slate-900">Issue Team Assignment</h1>
           <p className="mt-1 text-sm text-slate-600">Assign a responsible maintenance team to each issue.</p>
         </div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Needs assignment</p>
-          <p className="mt-1 text-2xl font-bold text-amber-950">{unassignedCount}</p>
+        <div className="flex flex-wrap gap-3">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Needs assignment</p>
+            <p className="mt-1 text-2xl font-bold text-amber-950">{unassignedCount}</p>
+          </div>
+          <Link href="/issues?status=PENDING_VERIFICATION" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 hover:bg-sky-100">
+            <p className="text-xs font-semibold uppercase tracking-wide text-sky-800">Pending review</p>
+            <p className="mt-1 text-2xl font-bold text-sky-950">{pendingReviewCount}</p>
+          </Link>
         </div>
       </header>
 
