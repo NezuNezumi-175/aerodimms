@@ -665,7 +665,7 @@ export function InspectionExecutionPanel({ inspectionId }: { inspectionId: strin
           </div>
           <div>
             <dt className="text-xs uppercase tracking-[0.12em] text-slate-500">Date</dt>
-            <dd className="mt-1 text-sm font-semibold text-slate-800">{inspection.date}</dd>
+            <dd className="mt-1 text-sm font-semibold text-slate-800">{inspection.date}{inspection.scheduledTime ? ` · ${inspection.scheduledTime}` : ""}</dd>
           </div>
           <div>
             <dt className="text-xs uppercase tracking-[0.12em] text-slate-500">Status</dt>

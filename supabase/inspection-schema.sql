@@ -8,12 +8,15 @@ create table if not exists public.inspections (
   inspection_type text not null,
   area text not null,
   scheduled_date date not null,
+  scheduled_time time,
   status text not null check (status in ('Scheduled', 'In Progress', 'Completed')),
   completed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check ((status = 'Completed') = (completed_at is not null))
 );
+
+alter table public.inspections add column if not exists scheduled_time time;
 
 create table if not exists public.inspection_checklist_answers (
   id text primary key,

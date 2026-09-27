@@ -20,6 +20,7 @@ export type CreateSupabaseInspectionInput = {
   type: Inspection["type"];
   area: string;
   scheduledDate: string;
+  scheduledTime: string;
 };
 export type InspectionFindingForSupabase = {
   checklistItemId: string;
@@ -60,6 +61,7 @@ export async function loadSupabaseInspections(): Promise<Inspection[]> {
     type: row.inspection_type as Inspection["type"],
     area: row.area,
     date: displayDate(row.scheduled_date),
+    scheduledTime: row.scheduled_time ? String(row.scheduled_time).slice(0, 5) : undefined,
     status: row.status as InspectionStatus,
   }));
   await cacheOfflineInspections(inspections);
@@ -76,9 +78,10 @@ export async function createSupabaseInspection(input: CreateSupabaseInspectionIn
       inspection_type: input.type,
       area: input.area,
       scheduled_date: input.scheduledDate,
+      scheduled_time: input.scheduledTime,
       status: "Scheduled",
     })
-    .select("id, inspector_employee_id, inspector_name, inspection_type, area, scheduled_date, status")
+    .select("id, inspector_employee_id, inspector_name, inspection_type, area, scheduled_date, scheduled_time, status")
     .single();
   if (error) throw error;
 
@@ -89,6 +92,7 @@ export async function createSupabaseInspection(input: CreateSupabaseInspectionIn
     type: data.inspection_type as Inspection["type"],
     area: data.area,
     date: displayDate(data.scheduled_date),
+    scheduledTime: data.scheduled_time ? String(data.scheduled_time).slice(0, 5) : undefined,
     status: data.status as InspectionStatus,
   };
   await cacheOfflineInspections([inspection]);

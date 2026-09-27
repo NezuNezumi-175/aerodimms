@@ -31,6 +31,7 @@ type NewInspectionDraft = {
   type: InspectionType;
   area: string;
   scheduledDate: string;
+  scheduledTime: string;
 };
 
 const inspectionTypes = Object.keys(checklistByInspectionType) as InspectionType[];
@@ -105,7 +106,7 @@ function InspectionCard({
         </div>
         <div>
           <dt className="text-xs text-slate-500">Date</dt>
-          <dd className="mt-0.5 font-medium text-slate-700">{inspection.date}</dd>
+          <dd className="mt-0.5 font-medium text-slate-700">{inspection.date}{inspection.scheduledTime ? ` · ${inspection.scheduledTime}` : ""}</dd>
         </div>
       </dl>
 
@@ -289,6 +290,7 @@ export function InspectionsPanel() {
         type: inspectionTypes[0],
         area: "",
         scheduledDate,
+        scheduledTime: "",
       });
       setNewInspectionError("");
     } catch (error) {
@@ -307,8 +309,8 @@ export function InspectionsPanel() {
       return;
     }
     const selectedInspector = inspectorOptions.find((option) => option.value === newInspectionDraft.inspectorValue);
-    if (!selectedInspector || !newInspectionDraft.area.trim() || !newInspectionDraft.scheduledDate) {
-      setNewInspectionError("Choose an assigned Inspector and enter a location and scheduled date.");
+    if (!selectedInspector || !newInspectionDraft.area.trim() || !newInspectionDraft.scheduledDate || !newInspectionDraft.scheduledTime) {
+      setNewInspectionError("Choose an assigned Inspector and enter a location, scheduled date, and scheduled time.");
       return;
     }
 
@@ -326,6 +328,7 @@ export function InspectionsPanel() {
         type: newInspectionDraft.type,
         area: newInspectionDraft.area.trim(),
         scheduledDate: newInspectionDraft.scheduledDate,
+        scheduledTime: newInspectionDraft.scheduledTime,
       });
       insertedInspection = createdInspection;
       if (createdInspection.status !== "Scheduled") {
@@ -546,6 +549,17 @@ export function InspectionsPanel() {
                   type="date"
                   value={newInspectionDraft.scheduledDate}
                   onChange={(event) => setNewInspectionDraft((current) => current ? { ...current, scheduledDate: event.target.value } : current)}
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-sky-400 focus:bg-white"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Scheduled Time <span className="text-red-600">*</span></span>
+                <input
+                  required
+                  type="time"
+                  value={newInspectionDraft.scheduledTime}
+                  onChange={(event) => setNewInspectionDraft((current) => current ? { ...current, scheduledTime: event.target.value } : current)}
                   className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-sky-400 focus:bg-white"
                 />
               </label>

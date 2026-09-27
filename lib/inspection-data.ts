@@ -14,6 +14,7 @@ export type Inspection = {
   type: InspectionType;
   area: string;
   date: string;
+  scheduledTime?: string;
   status: InspectionStatus;
 };
 
