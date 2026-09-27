@@ -106,6 +106,8 @@ export interface DemoState {
 }
 
 export const STORAGE_KEY = "aerodimms-demo-state";
+const DEMO_DATA_VERSION_KEY = "aerodimms-demo-data-version";
+const CURRENT_DEMO_DATA_VERSION = "2";
 
 export const assets: Asset[] = [
   { id: "asset-1", assetCode: "AGL-001", name: "Runway Edge Light 04-A", assetType: "Aeronautical Ground Light", status: "Operational", locationName: "Runway 04", latitude: 5.298179, longitude: 100.274163 },
@@ -124,13 +126,23 @@ export const findings: Finding[] = [
   { id: "f-101", findingCode: "F-101", source: "INTERNAL_INSPECTION", title: "Parking Bay Guidance Light Defect", description: "Critical guidance light failure at Parking Bay 1L requires immediate replacement.", severity: "CRITICAL", status: "IN_PROGRESS", locationName: "Parking Bay 1L", latitude: 33.60118, longitude: 130.44456, assetId: "asset-1", airportStandCode: "1L", assignedTo: "PEN12345", assignedTeam: "AGL Maintenance", targetCompletionDate: "2026-09-27", createdBy: "PEN23456", createdAt: "2026-09-15T08:42:00Z", updatedAt: "2026-09-25T15:15:00Z" },
   { id: "f-102", findingCode: "F-102", source: "INTERNAL_INSPECTION", title: "Parking Bay Surface Marking Faded", description: "Faded surface marking at Parking Bay 2 needs repainting during the next maintenance window.", severity: "HIGH", status: "ASSIGNED", locationName: "Parking Bay 2", latitude: 33.60058, longitude: 130.44513, assetId: "asset-6", airportStandCode: "2", assignedTo: "PEN12345", assignedTeam: "Pavement Team", targetCompletionDate: "2026-09-29", createdBy: "PEN23456", createdAt: "2026-09-14T09:05:00Z", updatedAt: "2026-09-25T13:50:00Z" },
   { id: "f-103", findingCode: "F-103", source: "INTERNAL_INSPECTION", title: "Taxiway Pavement Pothole", description: "Pavement damage detected on Taxiway A requiring maintenance attention.", severity: "CRITICAL", status: "ASSIGNED", locationName: "Taxiway A", latitude: 33.599367, longitude: 130.443789, assignedTeam: "Pavement Team", createdBy: "PEN23456", createdAt: "2026-09-18T10:15:00Z", updatedAt: "2026-09-25T10:37:00Z" },
-  { id: "f-104", findingCode: "F-104", source: "INTERNAL_INSPECTION", title: "Apron Light Failure", description: "Floodlight near apron stand is not delivering full illumination.", severity: "MEDIUM", status: "FINDING", locationName: "Apron South", latitude: 5.30074, longitude: 100.27974, assetId: "asset-7", createdBy: "PEN23456", createdAt: "2026-09-16T14:12:00Z", updatedAt: "2026-09-25T11:00:00Z" },
-  { id: "f-105", findingCode: "F-105", source: "INTERNAL_INSPECTION", title: "Runway Sign Damage", description: "Runway signage at holding bay requires replacement.", severity: "MEDIUM", status: "WORK_ORDER", locationName: "Holding Bay", latitude: 5.29712, longitude: 100.27285, assetId: "asset-9", assignedTo: "PEN12345", assignedTeam: "Signage Team", targetCompletionDate: "2026-09-30", createdBy: "PEN23456", createdAt: "2026-09-11T07:18:00Z", updatedAt: "2026-09-25T12:25:00Z" },
-  { id: "f-106", findingCode: "F-106", source: "INTERNAL_INSPECTION", title: "Perimeter Fence Crack", description: "Fence segment along northern boundary has a damaged section.", severity: "LOW", status: "ASSIGNED", locationName: "Northern Boundary", latitude: 5.30254, longitude: 100.27262, assetId: "asset-8", assignedTeam: "Security Works", createdBy: "PEN23456", createdAt: "2026-09-12T15:40:00Z", updatedAt: "2026-09-25T08:04:00Z" },
-  { id: "f-107", findingCode: "F-107", source: "INTERNAL_INSPECTION", title: "Apron Surface Crack", description: "Minor apron surface defect requires further inspection.", severity: "LOW", status: "CLOSED", locationName: "Apron East", latitude: 5.30132, longitude: 100.28191, assetId: "asset-10", assignedTeam: "Pavement Team", createdBy: "PEN23456", createdAt: "2026-09-08T09:30:00Z", updatedAt: "2026-09-20T17:30:00Z" },
-  { id: "f-108", findingCode: "F-108", source: "REGULATORY", title: "Runway 22 Threshold Marking", description: "Threshold paint visibility needs review.", severity: "MEDIUM", status: "IN_PROGRESS", locationName: "Runway 22", latitude: 5.29577, longitude: 100.27595, assignedTo: "PEN12345", assignedTeam: "Marking Team", targetCompletionDate: "2026-09-28", createdBy: "PEN34567", createdAt: "2026-09-20T11:08:00Z", updatedAt: "2026-09-25T09:16:00Z" },
-  { id: "f-109", findingCode: "F-109", source: "INTERNAL_INSPECTION", title: "Taxiway Sign Misalignment", description: "Taxiway sign panel is leaning and needs alignment repair.", severity: "HIGH", status: "FINDING", locationName: "Taxiway A", latitude: 5.29916, longitude: 100.27703, assetId: "asset-6", createdBy: "PEN23456", createdAt: "2026-09-19T17:25:00Z", updatedAt: "2026-09-25T07:30:00Z" },
-  { id: "f-110", findingCode: "F-110", source: "INTERNAL_INSPECTION", title: "Apron Drainage Check", description: "Water drainage issue near Apron South needs follow-up.", severity: "HIGH", status: "WORK_ORDER", locationName: "Apron South", latitude: 5.30072, longitude: 100.2798, assignedTo: "PEN12345", assignedTeam: "Civil Works", targetCompletionDate: "2026-09-26", createdBy: "PEN23456", createdAt: "2026-09-17T13:12:00Z", updatedAt: "2026-09-25T14:55:00Z" },
+  { id: "f-104", findingCode: "F-104", source: "INTERNAL_INSPECTION", title: "Parking Stand 4 Floodlight Failure", description: "Floodlight near Parking Stand 4 is not delivering full illumination.", severity: "MEDIUM", status: "FINDING", locationName: "Parking Stand 4", latitude: 33.599875, longitude: 130.445536, airportStandCode: "4", createdBy: "PEN23456", createdAt: "2026-09-16T14:12:00Z", updatedAt: "2026-09-25T11:00:00Z" },
+  { id: "f-105", findingCode: "F-105", source: "INTERNAL_INSPECTION", title: "Parking Stand 6L Surface Marking", description: "Surface marking at Parking Stand 6L is faded and needs repainting.", severity: "MEDIUM", status: "WORK_ORDER", locationName: "Parking Stand 6L", latitude: 33.599233, longitude: 130.445994, airportStandCode: "6L", assignedTo: "PEN12345", assignedTeam: "Signage Team", targetCompletionDate: "2026-09-30", createdBy: "PEN23456", createdAt: "2026-09-11T07:18:00Z", updatedAt: "2026-09-25T12:25:00Z" },
+  { id: "f-106", findingCode: "F-106", source: "INTERNAL_INSPECTION", title: "Parking Stand 7 Safety Barrier Damage", description: "A safety barrier beside Parking Stand 7 has a damaged section.", severity: "LOW", status: "ASSIGNED", locationName: "Parking Stand 7", latitude: 33.598575, longitude: 130.446756, airportStandCode: "7", assignedTeam: "Security Works", createdBy: "PEN23456", createdAt: "2026-09-12T15:40:00Z", updatedAt: "2026-09-25T08:04:00Z" },
+  { id: "f-107", findingCode: "F-107", source: "INTERNAL_INSPECTION", title: "Parking Stand 8 Apron Surface Crack", description: "A surface crack at Parking Stand 8 requires repair.", severity: "LOW", status: "CLOSED", locationName: "Parking Stand 8", latitude: 33.598006, longitude: 130.447144, airportStandCode: "8", assignedTeam: "Pavement Team", createdBy: "PEN23456", createdAt: "2026-09-08T09:30:00Z", updatedAt: "2026-09-20T17:30:00Z" },
+  { id: "f-108", findingCode: "F-108", source: "REGULATORY", title: "Parking Stand 9 Safety Line Faded", description: "Safety line visibility at Parking Stand 9 needs review.", severity: "MEDIUM", status: "IN_PROGRESS", locationName: "Parking Stand 9", latitude: 33.596572, longitude: 130.448125, airportStandCode: "9", assignedTo: "PEN12345", assignedTeam: "Marking Team", targetCompletionDate: "2026-09-28", createdBy: "PEN34567", createdAt: "2026-09-20T11:08:00Z", updatedAt: "2026-09-25T09:16:00Z" },
+  { id: "f-109", findingCode: "F-109", source: "INTERNAL_INSPECTION", title: "Parking Stand 10 Guidance Sign Misalignment", description: "The guidance sign beside Parking Stand 10 is leaning and needs alignment.", severity: "HIGH", status: "FINDING", locationName: "Parking Stand 10", latitude: 33.596006, longitude: 130.448511, airportStandCode: "10", createdBy: "PEN23456", createdAt: "2026-09-19T17:25:00Z", updatedAt: "2026-09-25T07:30:00Z" },
+  { id: "f-110", findingCode: "F-110", source: "INTERNAL_INSPECTION", title: "Parking Stand 11L Apron Drainage", description: "Water is pooling near Parking Stand 11L and needs drainage inspection.", severity: "HIGH", status: "WORK_ORDER", locationName: "Parking Stand 11L", latitude: 33.595439, longitude: 130.448586, airportStandCode: "11L", assignedTo: "PEN12345", assignedTeam: "Civil Works", targetCompletionDate: "2026-09-26", createdBy: "PEN23456", createdAt: "2026-09-17T13:12:00Z", updatedAt: "2026-09-25T14:55:00Z" },
+  { id: "f-111", findingCode: "F-111", source: "INTERNAL_INSPECTION", title: "Parking Stand 12L Edge Light Defect", description: "One edge light at Parking Stand 12L is not operating.", severity: "CRITICAL", status: "FINDING", locationName: "Parking Stand 12L", latitude: 33.594781, longitude: 130.449036, airportStandCode: "12L", assignedTeam: "AGL Maintenance", createdBy: "PEN23456", createdAt: "2026-09-21T08:15:00Z", updatedAt: "2026-09-25T08:15:00Z" },
+  { id: "f-112", findingCode: "F-112", source: "INTERNAL_INSPECTION", title: "Parking Stand 13 Pavement Spalling", description: "Concrete spalling was observed at the edge of Parking Stand 13.", severity: "HIGH", status: "ASSIGNED", locationName: "Parking Stand 13", latitude: 33.592922, longitude: 130.449439, airportStandCode: "13", assignedTeam: "Pavement Team", createdBy: "PEN23456", createdAt: "2026-09-21T09:40:00Z", updatedAt: "2026-09-25T09:40:00Z" },
+  { id: "f-113", findingCode: "F-113", source: "INTERNAL_INSPECTION", title: "Parking Stand 16 Apron Light Failure", description: "Apron lighting near Parking Stand 16 is flickering.", severity: "MEDIUM", status: "WORK_ORDER", locationName: "Parking Stand 16", latitude: 33.591536, longitude: 130.4501, airportStandCode: "16", assignedTeam: "AGL Maintenance", createdBy: "PEN23456", createdAt: "2026-09-22T07:20:00Z", updatedAt: "2026-09-25T10:20:00Z" },
+  { id: "f-114", findingCode: "F-114", source: "INTERNAL_INSPECTION", title: "Parking Stand 18 Marking Wear", description: "Stand boundary markings at Parking Stand 18 are difficult to see.", severity: "LOW", status: "FINDING", locationName: "Parking Stand 18", latitude: 33.590678, longitude: 130.450686, airportStandCode: "18", assignedTeam: "Marking Team", createdBy: "PEN23456", createdAt: "2026-09-22T11:05:00Z", updatedAt: "2026-09-25T11:05:00Z" },
+  { id: "f-115", findingCode: "F-115", source: "INTERNAL_INSPECTION", title: "Parking Stand 20 Surface Damage", description: "A damaged surface panel near Parking Stand 20 needs assessment.", severity: "HIGH", status: "IN_PROGRESS", locationName: "Parking Stand 20", latitude: 33.590044, longitude: 130.451419, airportStandCode: "20", assignedTeam: "Pavement Team", createdBy: "PEN23456", createdAt: "2026-09-23T06:45:00Z", updatedAt: "2026-09-25T12:45:00Z" },
+  { id: "f-116", findingCode: "F-116", source: "INTERNAL_INSPECTION", title: "Parking Stand 25 Sign Panel Damage", description: "The information panel near Parking Stand 25 is damaged.", severity: "MEDIUM", status: "ASSIGNED", locationName: "Parking Stand 25", latitude: 33.588256, longitude: 130.452642, airportStandCode: "25", assignedTeam: "Signage Team", createdBy: "PEN23456", createdAt: "2026-09-23T13:25:00Z", updatedAt: "2026-09-25T13:25:00Z" },
+  { id: "f-117", findingCode: "F-117", source: "INTERNAL_INSPECTION", title: "Parking Stand 28 Floodlight Check", description: "A floodlight near Parking Stand 28 has reduced output.", severity: "CRITICAL", status: "IN_PROGRESS", locationName: "Parking Stand 28", latitude: 33.587281, longitude: 130.453506, airportStandCode: "28", assignedTeam: "AGL Maintenance", createdBy: "PEN23456", createdAt: "2026-09-24T08:10:00Z", updatedAt: "2026-09-25T14:10:00Z" },
+  { id: "f-118", findingCode: "F-118", source: "REGULATORY", title: "Parking Stand 30 Safety Marking", description: "Safety marking condition at Parking Stand 30 requires corrective action.", severity: "HIGH", status: "FINDING", locationName: "Parking Stand 30", latitude: 33.585781, longitude: 130.454219, airportStandCode: "30", createdBy: "PEN34567", createdAt: "2026-09-24T12:30:00Z", updatedAt: "2026-09-25T15:30:00Z" },
+  { id: "f-119", findingCode: "F-119", source: "INTERNAL_INSPECTION", title: "Parking Stand 47 Surface Crack", description: "A surface crack was found at West Apron Parking Stand 47.", severity: "MEDIUM", status: "ASSIGNED", locationName: "Parking Stand 47", latitude: 33.590861, longitude: 130.441317, airportStandCode: "47", assignedTeam: "Pavement Team", createdBy: "PEN23456", createdAt: "2026-09-25T07:50:00Z", updatedAt: "2026-09-25T16:00:00Z" },
+  { id: "f-120", findingCode: "F-120", source: "INTERNAL_INSPECTION", title: "Parking Stand 51R Guidance Light", description: "Guidance lighting at West Apron Parking Stand 51R needs repair.", severity: "HIGH", status: "WORK_ORDER", locationName: "Parking Stand 51R", latitude: 33.588281, longitude: 130.443069, airportStandCode: "51R", assignedTeam: "AGL Maintenance", createdBy: "PEN23456", createdAt: "2026-09-25T10:35:00Z", updatedAt: "2026-09-25T16:35:00Z" },
 ];
 
 export const workOrders: WorkOrder[] = [
@@ -201,6 +213,7 @@ export function loadDemoState(): DemoState {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
+    window.localStorage.setItem(DEMO_DATA_VERSION_KEY, CURRENT_DEMO_DATA_VERSION);
     return defaultState;
   }
 
@@ -213,34 +226,57 @@ export function loadDemoState(): DemoState {
       return value;
     };
 
-    return {
+    let normalizedFindings = storedState.findings.map((finding) => {
+      const demoFinding = defaultState.findings.find(
+        (item) => item.id === finding.id && (item.airportStandCode || item.id === "f-103"),
+      );
+
+      return {
+        ...finding,
+        ...(demoFinding
+          ? {
+              title: demoFinding.title,
+              description: demoFinding.description,
+              locationName: demoFinding.locationName,
+              severity: demoFinding.severity,
+              status: demoFinding.status,
+              assignedTeam: demoFinding.assignedTeam,
+              airportStandCode: demoFinding.airportStandCode,
+              latitude: demoFinding.latitude,
+              longitude: demoFinding.longitude,
+            }
+          : {}),
+        assignedTo: employeeIdFor(finding.assignedTo),
+        createdBy: employeeIdFor(finding.createdBy),
+      };
+    });
+
+    const shouldMigrateDemoData = window.localStorage.getItem(DEMO_DATA_VERSION_KEY) !== CURRENT_DEMO_DATA_VERSION;
+    if (shouldMigrateDemoData) {
+      const coordinateCorrections = new Map(defaultState.findings
+        .filter((finding) => ["f-104", "f-105", "f-106", "f-107", "f-108", "f-109", "f-110"].includes(finding.id))
+        .map((finding) => [finding.id, finding]));
+      normalizedFindings = normalizedFindings.map((finding) => {
+        const seed = coordinateCorrections.get(finding.id);
+        return seed ? {
+          ...finding,
+          title: seed.title,
+          description: seed.description,
+          locationName: seed.locationName,
+          latitude: seed.latitude,
+          longitude: seed.longitude,
+          airportStandCode: seed.airportStandCode,
+        } : finding;
+      });
+      const storedIds = new Set(normalizedFindings.map((finding) => finding.id));
+      normalizedFindings.push(...defaultState.findings.filter((finding) => /^f-(11[1-9]|120)$/.test(finding.id) && !storedIds.has(finding.id)));
+    }
+
+    const normalizedState = {
       ...storedState,
       completedInspectionRecords: storedState.completedInspectionRecords ?? [],
       internalInspectionFindings: storedState.internalInspectionFindings ?? [],
-      findings: storedState.findings.map((finding) => {
-        const demoFinding = defaultState.findings.find(
-          (item) => item.id === finding.id && (item.airportStandCode || item.id === "f-103"),
-        );
-
-        return {
-          ...finding,
-          ...(demoFinding
-            ? {
-                title: demoFinding.title,
-                description: demoFinding.description,
-                locationName: demoFinding.locationName,
-                severity: demoFinding.severity,
-                status: demoFinding.status,
-                assignedTeam: demoFinding.assignedTeam,
-                airportStandCode: demoFinding.airportStandCode,
-                latitude: demoFinding.latitude,
-                longitude: demoFinding.longitude,
-              }
-            : {}),
-          assignedTo: employeeIdFor(finding.assignedTo),
-          createdBy: employeeIdFor(finding.createdBy),
-        };
-      }),
+      findings: normalizedFindings,
       workOrders: storedState.workOrders.map((workOrder) => ({
         ...workOrder,
         assignedTo: employeeIdFor(workOrder.assignedTo),
@@ -254,6 +290,11 @@ export function loadDemoState(): DemoState {
         userId: employeeIdFor(entry.userId) ?? "",
       })),
     };
+    if (shouldMigrateDemoData) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedState));
+      window.localStorage.setItem(DEMO_DATA_VERSION_KEY, CURRENT_DEMO_DATA_VERSION);
+    }
+    return normalizedState;
   } catch {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
     return defaultState;
